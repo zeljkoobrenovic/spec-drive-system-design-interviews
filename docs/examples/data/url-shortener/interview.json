@@ -2595,6 +2595,20 @@
           "description": "A SQL database gives a clean custom-alias collision story via a UNIQUE constraint and transactional creates that are easy to reason about, but a single primary eventually becomes a write bottleneck and sharding is manual. A managed key-value store has partitioning and horizontal scale built in and matches the by-code lookup workload, yet owner dashboards need extra indexes and alias transactions are less ergonomic.",
           "chosen": "The design picks a SQL database for the first durable version because correctness of aliases and writes matters more than scale at this stage."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A marketing agency signs up and wants every link it creates to keep working after the agency stops paying",
+          "detection": "Sales conversations, an enterprise procurement questionnaire",
+          "attractor": "Links stop being disposable records owned by the service and become contractual obligations to a paying customer's own audience. Deleting a lapsed account's rows now breaks somebody else's printed material.",
+          "business": "Offer a retention guarantee tied to the plan rather than to the account's payment state.",
+          "residue": "Link lifetime separates from account lifetime: the mapping row carries its own retention policy instead of cascading from the owner, so deactivating an account never deletes mappings.",
+          "components": [
+            "DB",
+            "App"
+          ],
+          "group": "Customers and contracts"
+        }
       ]
     },
     {
@@ -3244,6 +3258,21 @@
           "name": "Cache freshness vs. database offload",
           "description": "Cache-aside on redirects absorbs the read-heavy hot-URL traffic before it reaches the database, but a cached entry can keep serving a link after it was deleted or expired until eviction or invalidation catches up. Shorter TTLs and explicit invalidation tighten staleness at the price of more misses falling through to the mapping store.",
           "chosen": "The design caches hot code-to-URL lookups with cache-aside fallback to the DB, accepting bounded staleness in exchange for shedding most redirect load."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A single short link is printed on the front page of a national newspaper",
+          "detection": "A traffic spike on one key, or the marketing team mentioning the placement in advance",
+          "attractor": "Traffic stops being spread across millions of codes and collapses onto one. The service's load profile becomes that of a single-object CDN, and the interesting failure is one hot key, not aggregate volume.",
+          "business": "Treat named campaigns as first-class and guarantee they stay up.",
+          "residue": "The redirect path tolerates a single dominant key: cache entries are read-through with request coalescing, so a miss on the hot code sends one database read rather than a stampede.",
+          "components": [
+            "Cache",
+            "DB",
+            "App"
+          ],
+          "group": "Traffic shape"
         }
       ]
     },
@@ -4339,6 +4368,20 @@
           "description": "Emitting click events asynchronously through a queue keeps the redirect response fast because nothing analytic must complete before the 302 is returned, but analytics become eventually consistent and events can drop during queue outages. Writing the click synchronously would guarantee every count at the price of putting the analytics store on the hot path.",
           "chosen": "The design decouples analytics behind a message queue, accepting eventual and occasionally lossy counts so the redirect path stays minimal."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A privacy regulator rules that click analytics constitutes personal data and requires per-region storage",
+          "detection": "Regulatory press, legal counsel, a competitor announcing regional data residency",
+          "attractor": "Analytics stops being a harmless byproduct of redirects and becomes regulated data with a jurisdiction attached. The redirect itself is unaffected, but anything derived from it is now subject to where the click happened.",
+          "business": "Sell data residency as an enterprise feature rather than treating it as a compliance cost.",
+          "residue": "Analytics writes already leave the redirect path through a queue, so the pipeline gains a routing step that partitions events by origin region without touching redirect latency.",
+          "components": [
+            "Queue",
+            "Analytics"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -4759,6 +4802,21 @@
           "name": "Write simplicity vs. create latency",
           "description": "Active-passive keeps all mapping writes in one primary region, so custom aliases need no cross-region conflict resolution and correctness is easy to reason about — but creates from far regions pay cross-region latency and a regional write outage pauses new links until a standby is promoted. Active-active gives every region local create latency, yet aliases need global uniqueness checks and replication lag can make a brand-new link miss elsewhere.",
           "chosen": "The design chooses active-passive writes with read replicas everywhere, since redirects (the latency-critical path) stay fast globally while creates tolerate a single write region."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "The company acquires a competitor and must serve its existing short links on a second domain without breaking them",
+          "detection": "Corporate development; an integration deadline arrives fully formed",
+          "attractor": "The service stops owning a single namespace. Two code spaces with independent history — and possibly colliding codes — must resolve under one system.",
+          "business": "Absorb the acquired links with no re-issuing and no broken redirects.",
+          "residue": "Already survived. Sharding by code (step 6) means lookup is a routing decision, not a single table; multi-region replication (step 8) already resolves a code against per-region stores. The acquired namespace is another shard with a domain qualifier — no new architecture, only configuration.",
+          "survived": true,
+          "components": [
+            "Router",
+            "Shards"
+          ],
+          "group": "Ownership and namespace"
         }
       ]
     }

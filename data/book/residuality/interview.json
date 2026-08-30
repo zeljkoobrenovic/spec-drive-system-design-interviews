@@ -1,0 +1,1111 @@
+{
+  "title": "Residuality — Designing for Stress",
+  "description": "Barry O'Reilly's Residuality Theory applied end to end, using the EV-charging platform from the book. Start with the naïve architecture, stress it with facts from the business context, keep the residues, and watch the result absorb two changes — organized charger-blocking and the 2023 EU card-payment mandate — that nobody designed for. A method for the senior signal in a system-design interview: not listing trade-offs, but showing a design survive what it was never told about.",
+  "highLevelArchitecture": {
+    "nodes": [
+      {
+        "id": "Driver",
+        "label": "Driver",
+        "type": "actor",
+        "category": "boundary",
+        "traits": [
+          "derived"
+        ],
+        "description": "The person charging a car. In the naive design they are a subscriber holding a key fob; by the end they may be a walk-up stranger, a fleet driver, or an ambulance."
+      },
+      {
+        "id": "Fob",
+        "label": "Key Fob (RFID)",
+        "type": "client",
+        "category": "boundary",
+        "traits": [
+          "stateless"
+        ],
+        "description": "The identity token in the naive design: a card held against the charger panel. The single point whose failure starts the whole analysis."
+      },
+      {
+        "id": "Plate",
+        "label": "Plate Reader",
+        "type": "client",
+        "category": "boundary",
+        "traits": [
+          "derived"
+        ],
+        "description": "Camera reading the licence plate. The residue of the broken-fob stressor: identity without a token the driver can lose."
+      },
+      {
+        "id": "Charger",
+        "label": "Charge Point",
+        "type": "edge",
+        "category": "boundary",
+        "traits": [
+          "partitioned"
+        ],
+        "description": "The physical charger and its panel. Takes the identification, asks the backend whether to charge, and delivers power."
+      },
+      {
+        "id": "Camera",
+        "label": "Security Camera",
+        "type": "client",
+        "category": "boundary",
+        "traits": [
+          "derived"
+        ],
+        "description": "Added as the residue of physical damage; later does unplanned work as evidence for ICE-ing and disputes."
+      },
+      {
+        "id": "API",
+        "label": "Charging API",
+        "type": "gateway",
+        "category": "edge",
+        "traits": [
+          "stateless"
+        ],
+        "description": "The cloud entry point the charge point calls. In the naive design it both authenticates the member and authorizes the charge."
+      },
+      {
+        "id": "Identity",
+        "label": "Identity Service",
+        "type": "service",
+        "category": "compute",
+        "traits": [
+          "stateless"
+        ],
+        "description": "Resolves whoever is at the charger to an account, by fob, plate, app, or card. Split out from billing by the broken-fob residue."
+      },
+      {
+        "id": "Authz",
+        "label": "Charge Authorization",
+        "type": "service",
+        "category": "compute",
+        "traits": [
+          "stateless"
+        ],
+        "description": "Decides whether to start a charge and issues the charge command. Deliberately knows nothing about how the driver will pay."
+      },
+      {
+        "id": "Billing",
+        "label": "Billing Service",
+        "type": "service",
+        "category": "compute",
+        "traits": [
+          "stateful"
+        ],
+        "description": "Prices and bills a completed session. Time-based sliding scale after the idle-occupancy residue; payment-method agnostic after the fob residue."
+      },
+      {
+        "id": "Payments",
+        "label": "Payment Adapters",
+        "type": "external",
+        "category": "integration",
+        "traits": [
+          "stateless"
+        ],
+        "description": "Subscription, invoice, and ad-hoc card capture behind one interface. The AFIR 2023 mandate becomes one more adapter, not a redesign."
+      },
+      {
+        "id": "Accounts",
+        "label": "Account Store",
+        "type": "database",
+        "category": "state",
+        "traits": [
+          "stateful",
+          "authoritative"
+        ],
+        "description": "Subscribers, fleets, and the credentials that map to them. A fleet is one payer with many drivers and many cars."
+      },
+      {
+        "id": "Sessions",
+        "label": "Session Store",
+        "type": "database",
+        "category": "state",
+        "traits": [
+          "stateful",
+          "authoritative"
+        ],
+        "description": "The authoritative record of every charge: who, which charger, start, stop, energy, and dwell time. Billing and disputes both read it."
+      },
+      {
+        "id": "Ops",
+        "label": "Operations & Telemetry",
+        "type": "observability",
+        "category": "ops",
+        "traits": [
+          "derived"
+        ],
+        "description": "Charger health, occupancy, and incident evidence. Turns 'a charger is broken' from a customer complaint into a dispatchable event."
+      }
+    ],
+    "links": [
+      {
+        "id": "driver-fob",
+        "from": "Driver",
+        "to": "Fob"
+      },
+      {
+        "id": "driver-plate",
+        "from": "Driver",
+        "to": "Plate"
+      },
+      {
+        "id": "fob-charger",
+        "from": "Fob",
+        "to": "Charger"
+      },
+      {
+        "id": "plate-charger",
+        "from": "Plate",
+        "to": "Charger"
+      },
+      {
+        "id": "camera-charger",
+        "from": "Camera",
+        "to": "Charger"
+      },
+      {
+        "id": "charger-api",
+        "from": "Charger",
+        "to": "API"
+      },
+      {
+        "id": "api-identity",
+        "from": "API",
+        "to": "Identity"
+      },
+      {
+        "id": "api-authz",
+        "from": "API",
+        "to": "Authz"
+      },
+      {
+        "id": "identity-accounts",
+        "from": "Identity",
+        "to": "Accounts"
+      },
+      {
+        "id": "authz-identity",
+        "from": "Authz",
+        "to": "Identity"
+      },
+      {
+        "id": "authz-sessions",
+        "from": "Authz",
+        "to": "Sessions"
+      },
+      {
+        "id": "billing-sessions",
+        "from": "Billing",
+        "to": "Sessions"
+      },
+      {
+        "id": "billing-payments",
+        "from": "Billing",
+        "to": "Payments"
+      },
+      {
+        "id": "billing-accounts",
+        "from": "Billing",
+        "to": "Accounts"
+      },
+      {
+        "id": "charger-ops",
+        "from": "Charger",
+        "to": "Ops"
+      },
+      {
+        "id": "camera-ops",
+        "from": "Camera",
+        "to": "Ops"
+      }
+    ],
+    "types": []
+  },
+  "requirements": {
+    "functional": [
+      "Let a driver charge a car and be billed correctly for it.",
+      "Identify whoever is at the charger — subscriber, fleet driver, or stranger.",
+      "Authorize or refuse a charge without knowing how it will be paid for.",
+      "Price a session on energy and on how long the bay was occupied.",
+      "Keep an evidential record of what happened at each charge point."
+    ],
+    "nonFunctional": [
+      "Survive stressors the design was never told about (criticality, not correctness).",
+      "Absorb new payment methods without restructuring the charge path.",
+      "Absorb new customer shapes — fleets, public sector — without redefining 'customer'.",
+      "Keep residues cheap: a residue may be designed without being fully implemented.",
+      "Remain analysable: every structural seam should trace to the stressor that paid for it."
+    ],
+    "outOfScope": [
+      "Grid balancing, energy trading, and tariff negotiation with utilities.",
+      "The charge point's internal firmware and the physical charging protocol.",
+      "Probability, likelihood scoring, and risk registers — deliberately excluded by the method."
+    ]
+  },
+  "steps": [
+    {
+      "id": "naive",
+      "title": "1. The Naïve Architecture",
+      "description": "Residuality starts from a design that solves the problem exactly as stated, called the naïve architecture. Registered drivers get a key fob, hold it against a panel on the charger, and a cloud API looks up the account and allows or denies the charge. It is deliberately the obvious answer. Its job is not to be right — its job is to be stressed.",
+      "whyNow": [
+        "You cannot stress a design you have not drawn. The naïve architecture is the object every later step attacks.",
+        "Starting from the obvious design also makes the method honest: whatever survives at the end was earned by a stressor, not imported from a favourite pattern."
+      ],
+      "decisionPrompt": "How much design should you do before you start looking for what breaks it?",
+      "concepts": [
+        {
+          "term": "Naïve architecture",
+          "definition": "The design that solves the problem as stated — the happy-path answer, drawn quickly and held loosely.",
+          "whyItMatters": "It is the control in the experiment. The residual architecture is only interesting relative to it.",
+          "example": "Fob → panel → cloud API → account database."
+        },
+        {
+          "term": "Hyperliminal system",
+          "definition": "An ordered, complicated software system running inside a disordered, complex business context.",
+          "whyItMatters": "O'Reilly's claim is that software engineering is the engineering of hyperliminal systems, so methods borrowed from bridge-building do not transfer.",
+          "example": "The charging platform is rigid; European energy policy, fleet buyers and vandalism are not."
+        },
+        {
+          "term": "Attractor",
+          "definition": "A state the business system returns to again and again, out of countless possible configurations.",
+          "whyItMatters": "There are far fewer attractors than stressors — that asymmetry is the leverage the whole method rests on.",
+          "example": "'Drivers arrive without a working token' is one attractor reachable by a broken fob, a flat phone, or a forgotten card."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Fob",
+          "Charger",
+          "API",
+          "Accounts"
+        ],
+        "links": [
+          "driver-fob",
+          "fob-charger",
+          "charger-api",
+          "api-identity"
+        ],
+        "highlight": [
+          "Fob",
+          "API"
+        ],
+        "caption": "The naïve architecture: identity, authorization and billing all collapsed into one API call behind a key fob."
+      },
+      "options": [
+        {
+          "name": "Draw the obvious design, then attack it (recommended)",
+          "description": "Spend minutes, not hours, on the naïve architecture. Its value is as a target.",
+          "pros": [
+            "Cheap to change while it is still a drawing.",
+            "Every later component has to justify itself against a stressor.",
+            "Avoids importing a pattern before knowing what pressure it must take."
+          ],
+          "cons": [
+            "Feels unsatisfying to hand over as 'the design'.",
+            "Requires the discipline to actually run the stressor pass."
+          ],
+          "view": {
+            "nodes": [
+              "Driver",
+              "Fob",
+              "Charger",
+              "API",
+              "Accounts"
+            ],
+            "links": [
+              "driver-fob",
+              "fob-charger",
+              "charger-api",
+              "api-identity"
+            ],
+            "highlight": [
+              "Fob"
+            ],
+            "caption": "Minimal design, held loosely: one identity token, one API, one store."
+          }
+        },
+        {
+          "name": "Design defensively up front",
+          "description": "Anticipate failures and build in redundancy, queues and abstraction layers before any analysis.",
+          "pros": [
+            "Feels rigorous.",
+            "Some guesses will be right."
+          ],
+          "cons": [
+            "Produces over-engineering unconnected to the context — the book's specific warning about dependency injection and microservices as answers to unknown futures.",
+            "Simultaneously under-engineers, because the guesses come from technology, not from the business."
+          ],
+          "view": {
+            "nodes": [
+              "Driver",
+              "Fob",
+              "Charger",
+              "API",
+              "Identity",
+              "Authz",
+              "Billing",
+              "Accounts",
+              "Sessions"
+            ],
+            "links": [
+              "driver-fob",
+              "fob-charger",
+              "charger-api",
+              "api-identity",
+              "api-authz",
+              "authz-sessions",
+              "billing-sessions",
+              "billing-accounts"
+            ],
+            "highlight": [
+              "Identity",
+              "Authz",
+              "Billing"
+            ],
+            "caption": "Structure added from instinct rather than from stress: more components, no more survivability."
+          }
+        }
+      ],
+      "tradeoffs": [
+        {
+          "name": "Speed of the first draft vs. attachment to it",
+          "description": "A design you spent a week on is a design you will defend. A design you sketched in ten minutes is one you will let collapse when a stressor breaks it — and collapsing is the point.",
+          "chosen": "Draw the naïve architecture fast and cheap, precisely so that abandoning parts of it costs nothing.",
+          "group": "Method"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Treating the naïve architecture as a first draft to be defended",
+          "why": "Defending it turns every stressor into an edge case to be patched, which is exactly the linear-thinking failure the method exists to break.",
+          "instead": "Treat it as disposable. Ask what would have to be true for it to be wrong."
+        }
+      ],
+      "talkingPoints": [
+        "I'll start with the obvious design, then spend most of the time attacking it — that's where the architecture actually comes from.",
+        "The naïve design assumes a subscriber with a working fob. Every one of those words is an assumption I can stress."
+      ]
+    },
+    {
+      "id": "flows",
+      "title": "2. Map Flows, Not Processes",
+      "description": "Before stressing anything, describe the system as flows — movements of information between actors — rather than as a business process. O'Reilly follows Parnas's 1971 warning that decomposing along process steps bakes today's process into the architecture forever, and notes that a modern 'use case' is the same trap wearing newer clothes.",
+      "whyNow": [
+        "Flows give the stressor pass something concrete to attack: every arrow is an assumption about who knows what, and when.",
+        "A process diagram hides those assumptions inside boxes labelled with verbs."
+      ],
+      "decisionPrompt": "Should the structure follow the steps of the business process, or the movement of information between actors?",
+      "concepts": [
+        {
+          "term": "Flow",
+          "definition": "The movement of information between two actors, where an actor may be a person, a company, or a software component.",
+          "whyItMatters": "Flows survive process change: the business can reorder its steps without invalidating the map.",
+          "example": "'Charge point asks the backend whether this driver may charge' is a flow; 'authenticate, then authorize, then bill' is a process."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Fob",
+          "Charger",
+          "API",
+          "Identity",
+          "Accounts"
+        ],
+        "links": [
+          "driver-fob",
+          "fob-charger",
+          "charger-api",
+          "api-identity",
+          "identity-accounts"
+        ],
+        "highlight": [
+          "Identity"
+        ],
+        "caption": "The same naïve design read as flows: who tells whom what, with identity named as its own step."
+      },
+      "tradeoffs": [
+        {
+          "name": "Process fidelity vs. structural durability",
+          "description": "Decomposing by process produces a system that matches today's business exactly and resists every change to it. Decomposing by flow produces a system that looks less like the org chart and outlives it.",
+          "chosen": "Map flows. The interview answer that names 'the identification flow' rather than 'the login step' is the one that survives the follow-up question.",
+          "group": "Method"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Drawing the business process and calling it an architecture",
+          "why": "It fixes the current sequence of steps into component boundaries, so any reordering of the business becomes a rewrite.",
+          "instead": "Ask what information moves between which actors, and let boundaries fall where the information does."
+        }
+      ],
+      "talkingPoints": [
+        "I'd rather describe this as flows than as a process — process diagrams tend to become component boundaries by accident."
+      ]
+    },
+    {
+      "id": "identity-stress",
+      "title": "3. Stress the Identity Assumption",
+      "description": "Now the method proper. Pick an assumption in the naïve architecture and imagine a fact that makes it wrong. The fob is the obvious place to start: it is one physical object standing between a driver and a charge. Note what the stressor does to the *business*, not to the servers — that is the attractor — and only then decide what change to the design survives it.",
+      "whyNow": [
+        "Identity is the naïve design's single point of failure and its most load-bearing assumption.",
+        "The residue produced here — separating who you are from how you pay — is what quietly makes two later stressors free."
+      ],
+      "decisionPrompt": "The fob is broken, lost, or in the other coat. What is the business now, and what does the design owe it?",
+      "concepts": [
+        {
+          "term": "Stressor",
+          "definition": "Any fact about the context that is currently outside your understanding of it. No probability, no consensus, no likelihood — only a coherent story.",
+          "whyItMatters": "Free of probability, you can consider things a risk register would filter out, which is where the useful structure hides.",
+          "example": "'The fob breaks' needs no likelihood estimate to be worth an hour of design thought."
+        },
+        {
+          "term": "Residue",
+          "definition": "What is left of the architecture after the stress — the naïve design plus the change that lets it survive the new attractor.",
+          "whyItMatters": "O'Reilly proposes the residue, not the component or the pattern, as the unit of software architecture.",
+          "example": "Reading the plate instead of the fob, and billing afterwards."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Fob",
+          "Plate",
+          "Charger",
+          "API",
+          "Identity",
+          "Authz",
+          "Accounts",
+          "Sessions"
+        ],
+        "links": [
+          "driver-fob",
+          "driver-plate",
+          "fob-charger",
+          "plate-charger",
+          "charger-api",
+          "api-identity",
+          "api-authz",
+          "identity-accounts",
+          "authz-sessions"
+        ],
+        "highlight": [
+          "Plate",
+          "Identity",
+          "Authz"
+        ],
+        "caption": "The broken-fob residue: identity becomes pluggable, and authorization stops depending on how the driver was recognized."
+      },
+      "stressors": [
+        {
+          "stressor": "The key fob breaks, is lost, or was left in another coat",
+          "detection": "Support calls from drivers standing at a charger; a spike in failed identifications at one site",
+          "attractor": "A driver is parked at a charger with too little battery to reach the next one and no way to prove who they are. The business is no longer running a subscription service; it is running an emergency, and the only answer is a 24-hour multilingual call centre nobody budgeted for.",
+          "business": "Let the car charge and settle up afterwards, rather than making identity a precondition of electricity.",
+          "residue": "Identity separates from authorization: the charge point can identify a driver by fob, by licence plate, or not at all, and the authorization service issues the same charge command regardless. Billing moves after the session instead of before it.",
+          "components": [
+            "Identity",
+            "Authz",
+            "Billing",
+            "Plate"
+          ],
+          "group": "Identity and access"
+        },
+        {
+          "stressor": "A driver with no account at all pulls up and wants to charge",
+          "detection": "Plate reads with no matching account; drivers phoning to ask if they can use the network",
+          "attractor": "The network stops being a members' club and becomes public infrastructure. Every non-member at a charger is either revenue or a complaint, depending on whether the design can take their money.",
+          "business": "Convert the stranger: charge them now, invoice them after, offer the subscription later.",
+          "residue": "Already survived. Because identity is pluggable and billing happens after the session, an unrecognized driver is simply an identity the system does not resolve to an account — the charge command is unchanged.",
+          "survived": true,
+          "components": [
+            "Identity",
+            "Billing"
+          ],
+          "group": "Identity and access"
+        }
+      ],
+      "tradeoffs": [
+        {
+          "name": "Certainty before power vs. power before certainty",
+          "description": "Requiring proof of identity before delivering electricity keeps billing simple and strands drivers whose token failed. Delivering first and settling later strands nobody and accepts some unrecoverable debt.",
+          "chosen": "Charge first, settle after. The stranded-driver attractor is far more expensive than the bad debt, and the decoupling it forces pays for itself twice more later.",
+          "group": "Identity and access"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Answering 'the fob breaks' with 'issue a replacement fob'",
+          "why": "It solves the incident and leaves the assumption — that identity requires a working token — untouched, so the next tokenless attractor breaks the design again.",
+          "instead": "Ask what the business looks like when no token works, and let that reshape the boundary."
+        },
+        {
+          "trap": "Calling this a risk and scoring it",
+          "why": "The moment it has a probability, it competes with other numbers and gets filtered out as unlikely. The book is explicit: no probability.",
+          "instead": "Ask only whether there is a coherent story. If there is, follow it to the attractor."
+        }
+      ],
+      "talkingPoints": [
+        "The interesting question isn't 'what if the fob breaks' — it's what the business becomes when a driver can't prove who they are.",
+        "Notice what this residue did structurally: it put a seam between identity and payment that nobody asked for."
+      ]
+    },
+    {
+      "id": "physical-stress",
+      "title": "4. Stress the Physical World",
+      "description": "Stressors are facts about the context, and the context includes weather, vandalism, and human impatience. These produce residues that look like operations rather than architecture — cameras, spare capacity, telemetry — and they matter, because residues combine. Two of the cheap ones added here do unplanned work in the final step.",
+      "whyNow": [
+        "Software-only stressor lists are, in O'Reilly's words, 'not a good sign' — the context is physical here, so the stressors must be too.",
+        "These residues are individually unremarkable and collectively decisive."
+      ],
+      "decisionPrompt": "What happens to this design when the hardware is damaged, occupied, or simply sat in for six hours?",
+      "concepts": [
+        {
+          "term": "Looping",
+          "definition": "When a newly raised stressor turns out to be already survived by residues built for earlier, unrelated stressors.",
+          "whyItMatters": "It is the signal that the architecture is approaching criticality — the point where further analysis stops paying.",
+          "example": "The design absorbing organized charger-blocking without a line of new code."
+        },
+        {
+          "term": "Criticality",
+          "definition": "The balance of components, connections and constraint at which a system survives stress it was never designed for.",
+          "whyItMatters": "O'Reilly's claim is that criticality, not correctness, is the architect's goal; correctness belongs to the programmer.",
+          "example": "Running out of stressors that need new residues."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Plate",
+          "Charger",
+          "Camera",
+          "API",
+          "Authz",
+          "Billing",
+          "Sessions",
+          "Ops"
+        ],
+        "links": [
+          "driver-plate",
+          "plate-charger",
+          "camera-charger",
+          "charger-api",
+          "api-authz",
+          "authz-sessions",
+          "billing-sessions",
+          "charger-ops",
+          "camera-ops"
+        ],
+        "highlight": [
+          "Camera",
+          "Ops",
+          "Billing"
+        ],
+        "caption": "Residues from the physical world: cameras and telemetry for damage, time-based pricing for occupancy."
+      },
+      "stressors": [
+        {
+          "stressor": "Drivers reverse into the chargers, and some are vandalized",
+          "detection": "Charger heartbeats stopping; repair invoices; drivers reporting a broken unit on arrival",
+          "attractor": "Physical capacity becomes unreliable in a way the software cannot see. A site with four chargers may effectively have two, and the business learns about it from angry customers rather than from its own systems.",
+          "business": "Overprovision slightly, and get evidence for insurance and police reports.",
+          "residue": "Cameras at each site and health telemetry from each charge point, so occupancy and availability are known to the platform rather than inferred from complaints.",
+          "components": [
+            "Camera",
+            "Ops",
+            "Charger"
+          ],
+          "group": "Physical world"
+        },
+        {
+          "stressor": "A driver finishes charging and leaves the car parked in the bay for six hours",
+          "detection": "Session records showing charge complete but connector still engaged; queue complaints at busy sites",
+          "attractor": "The scarce resource stops being electricity and becomes the parking bay. Subscribers who cannot charge blame the network, and adding chargers does not fix it.",
+          "business": "Price the bay, not just the energy — a sliding scale that makes idling expensive.",
+          "residue": "Billing moves from a flat per-session charge to time-based pricing computed from session dwell time, which means the session record must carry start, stop and disconnect separately.",
+          "components": [
+            "Billing",
+            "Sessions"
+          ],
+          "group": "Physical world"
+        }
+      ],
+      "tradeoffs": [
+        {
+          "name": "Simple pricing vs. allocating a scarce bay",
+          "description": "A flat charge per session is trivial to explain and to implement, and it gives a driver no reason at all to move the car. Time-based pricing allocates the bay properly and needs richer session data plus a conversation with every customer about the change.",
+          "chosen": "Time-based sliding scale. The scarce resource is the bay, and pricing is the only lever that reaches driver behaviour.",
+          "group": "Physical world"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Dismissing physical stressors as 'not architecture'",
+          "why": "The residues they produce — richer session records, telemetry, evidence capture — are structural, and they are what makes the unpredictable later stressors survivable.",
+          "instead": "Follow the stressor to whatever change it demands, even when that change is a pricing rule or a camera."
+        }
+      ],
+      "talkingPoints": [
+        "Some of these residues are business changes, not technical ones — the book is explicit that not everything is solved with software.",
+        "Cameras and a sliding scale look like operations trivia. Watch what they do to the next stressor."
+      ]
+    },
+    {
+      "id": "market-stress",
+      "title": "5. Stress the Market and the Regulator",
+      "description": "The richest stressors come from outside the company: a new kind of customer, a competitor, a change in law. O'Reilly suggests PESTLE, Porter's five forces and the Business Model Canvas purely as engines for generating them. Each one asks the same question of the design — what is the business now, and does the structure still hold?",
+      "whyNow": [
+        "Market and regulatory stressors are the ones that requirements documents never contain and that kill architectures years after delivery.",
+        "They are also where a candidate demonstrates that they understand the business, not just the boxes."
+      ],
+      "decisionPrompt": "A fleet operator, a hospital, and a regulator each arrive. Which assumption does each of them break?",
+      "concepts": [
+        {
+          "term": "Stressor vs. requirement",
+          "definition": "A requirement is a stakeholder's snapshot of what they want today; a stressor is a fact about the context that may make that snapshot wrong.",
+          "whyItMatters": "Requirements should themselves be stressed — 'what would have to happen for this requirement to change?'",
+          "example": "'Customers are individuals' is a requirement. 'A taxi firm wants one account for fifty drivers' is the stressor that breaks it."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Plate",
+          "Charger",
+          "API",
+          "Identity",
+          "Authz",
+          "Billing",
+          "Payments",
+          "Accounts",
+          "Sessions"
+        ],
+        "links": [
+          "driver-plate",
+          "plate-charger",
+          "charger-api",
+          "api-identity",
+          "api-authz",
+          "identity-accounts",
+          "authz-identity",
+          "authz-sessions",
+          "billing-sessions",
+          "billing-accounts",
+          "billing-payments"
+        ],
+        "highlight": [
+          "Accounts",
+          "Payments"
+        ],
+        "caption": "Market residues: an account becomes a payer with many drivers, and payment method becomes an adapter behind one interface."
+      },
+      "stressors": [
+        {
+          "stressor": "A taxi firm wants one account covering fifty drivers and forty cars",
+          "detection": "Enterprise sales conversations; procurement questionnaires asking about fleet billing",
+          "attractor": "The buyer stops being the driver. Growth comes from a small number of organizations that each bring many vehicles, and the person at the charger has no billing relationship with the network at all.",
+          "business": "Sell to fleets, and let the fleet administer its own drivers.",
+          "residue": "The account splits from the identity: one payer holds many credentials — fobs, plates, driver apps — and authorization resolves any of them to the same payer.",
+          "components": [
+            "Accounts",
+            "Identity",
+            "Billing"
+          ],
+          "group": "Market"
+        },
+        {
+          "stressor": "A health authority wants to charge ambulances, and expects them to be able to jump the queue",
+          "detection": "Public-sector tender documents; a hospital asking about guaranteed availability",
+          "attractor": "Charging acquires a priority dimension the network has never had. Some vehicles now matter more than others, and 'first come, first served' becomes a liability rather than a policy.",
+          "business": "Offer prioritized access as a contract term for emergency services.",
+          "residue": "Authorization gains a priority attribute on the payer rather than on the driver, so the charge decision can consider entitlement — and the same seam later carries any tiering the business invents.",
+          "components": [
+            "Authz",
+            "Accounts"
+          ],
+          "group": "Market"
+        },
+        {
+          "stressor": "A competitor halves its price in one country",
+          "detection": "Public tariffs; a fall in sessions at sites near their network",
+          "attractor": "Pricing becomes regional and reactive rather than a single number set centrally, and the business needs to change it in days rather than quarters.",
+          "business": "Compete locally without repricing the whole network.",
+          "residue": "Already survived. Time-based pricing (step 4) had already moved tariff out of the charge path and into billing as data, so a regional tariff is a configuration change rather than a code change.",
+          "survived": true,
+          "components": [
+            "Billing"
+          ],
+          "group": "Market"
+        }
+      ],
+      "tradeoffs": [
+        {
+          "name": "One account per driver vs. one account per payer",
+          "description": "Modelling the account as the driver keeps identity and billing in one object and makes the common case trivial. Modelling it as a payer with many credentials adds a level of indirection nobody needs on day one, and is the only shape that survives fleets, families and public-sector buyers.",
+          "chosen": "Payer with many credentials — the fleet stressor makes the indirection load-bearing rather than speculative.",
+          "group": "Market"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Generating only technical stressors",
+          "why": "O'Reilly flags a purely technical list as a warning sign: it simulates the parts of the world you already control and misses the parts that actually reshape the business.",
+          "instead": "Walk the business context deliberately — customers, competitors, regulators, suppliers, society."
+        },
+        {
+          "trap": "Rejecting a stressor because it is unlikely",
+          "why": "Likelihood is exactly the filter the method removes; the unlikely stressor and the likely one often lead to the same attractor.",
+          "instead": "Ask whether the story is coherent, then follow it."
+        }
+      ],
+      "talkingPoints": [
+        "The fleet stressor is the one I'd raise first in an interview — it breaks the 'customer' abstraction, and abstraction failures are the expensive kind.",
+        "I'm deliberately not assigning probabilities. The point is coverage of attractors, not a ranked risk list."
+      ]
+    },
+    {
+      "id": "looping",
+      "title": "6. Looping — Surviving What You Never Designed For",
+      "description": "This is the payoff, and it is the reason the method is worth the hour. Two events arrive that nobody modelled: organized blocking of chargers by drivers of petrol cars, and an EU law mandating ad-hoc card payment at every charge point. Neither appears in any requirement. Both are survived by residues built for entirely unrelated stressors. When new stressors stop demanding new residues, the architecture has reached criticality.",
+      "whyNow": [
+        "Looping is the empirical signal that further stressor analysis has stopped paying — the natural stopping point of the method.",
+        "It is also the single most persuasive thing to show an interviewer: a design absorbing a change it was never told about."
+      ],
+      "decisionPrompt": "Two unmodelled events arrive years apart. How much of the architecture has to change?",
+      "concepts": [
+        {
+          "term": "Hyperliminal coupling",
+          "definition": "Coupling revealed only when a single stressor damages two components at once — invisible until it hits.",
+          "whyItMatters": "These hidden relationships are where non-functional requirements actually live; the contagion matrix is how you find them.",
+          "example": "A server failure during a charge coupling the stop-charge command to unlocking the cable."
+        },
+        {
+          "term": "Residual architecture",
+          "definition": "All the residues compressed back into one coherent design.",
+          "whyItMatters": "The residues are worked out one at a time but must ship as a single system; integrating them is where distributed-systems judgement is needed.",
+          "example": "One identity seam serving fobs, plates, fleet credentials and cards."
+        }
+      ],
+      "view": {
+        "nodes": [
+          "Driver",
+          "Fob",
+          "Plate",
+          "Charger",
+          "Camera",
+          "API",
+          "Identity",
+          "Authz",
+          "Billing",
+          "Payments",
+          "Accounts",
+          "Sessions",
+          "Ops"
+        ],
+        "links": [
+          "driver-fob",
+          "driver-plate",
+          "fob-charger",
+          "plate-charger",
+          "camera-charger",
+          "charger-api",
+          "api-identity",
+          "api-authz",
+          "identity-accounts",
+          "authz-identity",
+          "authz-sessions",
+          "billing-sessions",
+          "billing-payments",
+          "billing-accounts",
+          "charger-ops",
+          "camera-ops"
+        ],
+        "highlight": [
+          "Payments",
+          "Camera",
+          "Billing"
+        ],
+        "caption": "The residual architecture. ICE-ing and the AFIR card mandate both land without new structure."
+      },
+      "stressors": [
+        {
+          "stressor": "ICE-ing: drivers of petrol cars park in charging bays to obstruct EV owners",
+          "detection": "Occupancy telemetry showing a bay engaged with no session; complaints naming specific sites",
+          "attractor": "The network acquires an adversary with no account and no incentive to cooperate. Bays are lost to people the business has no billing relationship with and no way to identify.",
+          "business": "Deter it, evidence it, and where possible bill for it.",
+          "residue": "Already survived, by three residues built for other reasons. The camera from the damage stressor provides evidence and a plate; the plate reader from the fob stressor identifies the vehicle without any account; the sliding scale from the occupancy stressor prices the dwell time. Nothing new is required — and the behaviour is now billable.",
+          "survived": true,
+          "components": [
+            "Camera",
+            "Plate",
+            "Billing",
+            "Ops"
+          ],
+          "group": "Looping"
+        },
+        {
+          "stressor": "EU law (AFIR, 2023) requires every charge point to accept ad-hoc credit card payment",
+          "detection": "Legislative process; trade press; competitors announcing card readers",
+          "attractor": "Payment method becomes a legal obligation rather than a commercial choice, and the subscription can no longer be the only route to a charge — a decade after the platform was designed.",
+          "business": "Comply without disturbing the subscription business.",
+          "residue": "Already survived. The broken-fob stressor had already decoupled identity from payment and moved billing after the session, so the charge command carries an authorization rather than a member id. Card capture becomes one more payment adapter behind the existing interface — a change at the edge, not a redesign.",
+          "survived": true,
+          "components": [
+            "Payments",
+            "Billing",
+            "Authz"
+          ],
+          "group": "Looping"
+        }
+      ],
+      "tradeoffs": [
+        {
+          "name": "Speculative structure vs. structure earned by a stressor",
+          "description": "Both look like extra components on day one, and developers reasonably fear over-engineering. The difference is provenance: a seam introduced because a stressor demanded it is anchored in the context, while a seam introduced from instinct is anchored in fashion.",
+          "chosen": "Only keep structure a stressor paid for. That is what makes this a decoupling and not an abstraction layer — and why it was still useful ten years later.",
+          "group": "Looping"
+        },
+        {
+          "name": "Stopping too early vs. analysing forever",
+          "description": "Too few stressors leaves fault lines unfound; unlimited stressors is a project of its own with diminishing returns.",
+          "chosen": "Stop when looping starts — when new stressors are already survived. That is criticality, and it is an observable event rather than a judgement call.",
+          "group": "Method"
+        }
+      ],
+      "traps": [
+        {
+          "trap": "Claiming the design 'predicted' ICE-ing or the AFIR mandate",
+          "why": "It predicted neither, and claiming otherwise misses the mechanism. Many stressors lead to the same attractor, so covering one covers the rest for free.",
+          "instead": "Say it plainly: the design survives these because unrelated residues combined, and that is what criticality looks like."
+        },
+        {
+          "trap": "Treating looping as permission to stop thinking",
+          "why": "Looping in one area of the context says nothing about an area you never walked.",
+          "instead": "Check that the stressor list actually spans customers, competitors, regulators, suppliers and the physical world before calling it done."
+        }
+      ],
+      "talkingPoints": [
+        "This is the moment worth reaching in an interview: a change nobody designed for that costs nothing, and being able to say exactly which earlier decision paid for it.",
+        "The mechanism is the asymmetry — far more stressors than attractors, so covering one attractor covers every stressor that leads to it."
+      ]
+    }
+  ],
+  "finalDesign": {
+    "title": "The Residual Architecture",
+    "description": "Every seam here was paid for by a stressor. Identity is separate from authorization because a fob broke. Billing runs after the session, priced on dwell time, because drivers idled in bays. Payment sits behind an adapter because identity and payment were pulled apart — which is why a 2023 law cost a configuration change rather than a rewrite. Cameras and telemetry came from vandalism and quietly became the answer to organized obstruction. None of this was predicted; all of it was stressed into existence.",
+    "view": {
+      "nodes": [
+        "Driver",
+        "Fob",
+        "Plate",
+        "Charger",
+        "Camera",
+        "API",
+        "Identity",
+        "Authz",
+        "Billing",
+        "Payments",
+        "Accounts",
+        "Sessions",
+        "Ops"
+      ],
+      "links": [
+        "driver-fob",
+        "driver-plate",
+        "fob-charger",
+        "plate-charger",
+        "camera-charger",
+        "charger-api",
+        "api-identity",
+        "api-authz",
+        "identity-accounts",
+        "authz-identity",
+        "authz-sessions",
+        "billing-sessions",
+        "billing-payments",
+        "billing-accounts",
+        "charger-ops",
+        "camera-ops"
+      ],
+      "caption": "The residual architecture: the naïve design plus every residue, integrated."
+    }
+  },
+  "satisfies": {
+    "functional": [
+      {
+        "requirement": "Let a driver charge a car and be billed correctly for it.",
+        "how": "The charge point identifies the vehicle however it can, authorization issues a charge command, and billing settles afterwards from the session record.",
+        "steps": [
+          "naive",
+          "identity-stress"
+        ]
+      },
+      {
+        "requirement": "Identify whoever is at the charger — subscriber, fleet driver, or stranger.",
+        "how": "Identity resolves fobs, plates and fleet credentials to a payer, and tolerates resolving to nobody.",
+        "steps": [
+          "identity-stress",
+          "market-stress"
+        ]
+      },
+      {
+        "requirement": "Authorize or refuse a charge without knowing how it will be paid for.",
+        "how": "The charge command carries an authorization rather than a member id — the seam the broken-fob residue created.",
+        "steps": [
+          "identity-stress",
+          "looping"
+        ]
+      },
+      {
+        "requirement": "Price a session on energy and on how long the bay was occupied.",
+        "how": "Session records carry start, stop and disconnect separately, so billing can apply a sliding scale.",
+        "steps": [
+          "physical-stress"
+        ]
+      },
+      {
+        "requirement": "Keep an evidential record of what happened at each charge point.",
+        "how": "Cameras and charge-point telemetry feed operations, giving plate-level evidence for damage, disputes and obstruction.",
+        "steps": [
+          "physical-stress",
+          "looping"
+        ]
+      }
+    ],
+    "nonFunctional": [
+      {
+        "requirement": "Survive stressors the design was never told about.",
+        "how": "Demonstrated rather than asserted: ICE-ing and the AFIR card mandate are both absorbed by residues built for unrelated stressors.",
+        "steps": [
+          "looping"
+        ]
+      },
+      {
+        "requirement": "Absorb new payment methods without restructuring the charge path.",
+        "how": "Payment adapters sit behind one interface, reached only after the session ends.",
+        "steps": [
+          "identity-stress",
+          "looping"
+        ]
+      },
+      {
+        "requirement": "Absorb new customer shapes without redefining 'customer'.",
+        "how": "The account is a payer holding many credentials, so fleets and public-sector buyers need no new concept.",
+        "steps": [
+          "market-stress"
+        ]
+      },
+      {
+        "requirement": "Keep residues cheap.",
+        "how": "A residue is a described change, not necessarily an implemented one — the second data centre may stay unbuilt while the design stays ready for it.",
+        "steps": [
+          "naive",
+          "physical-stress"
+        ]
+      },
+      {
+        "requirement": "Remain analysable.",
+        "how": "The contagion matrix maps every stressor to the components it damages, exposing coupling that no functional dependency declares.",
+        "steps": [
+          "looping"
+        ]
+      }
+    ]
+  },
+  "interviewScript": [
+    {
+      "phase": "Frame the method",
+      "time": "1 min",
+      "say": [
+        "I'll draw the obvious design first, then spend most of the time stressing it — that's where the architecture comes from.",
+        "A stressor is a fact about the business context I hadn't accounted for. No probabilities: I'm looking for coverage, not a ranked risk list."
+      ]
+    },
+    {
+      "phase": "Naïve architecture",
+      "time": "3 min",
+      "say": [
+        "Fob, panel, cloud API, account store. Deliberately the obvious answer — its job is to be attacked."
+      ]
+    },
+    {
+      "phase": "Stress identity",
+      "time": "8 min",
+      "say": [
+        "Start with the fob, because it's one physical object between a driver and a charge.",
+        "The attractor isn't 'the API is down' — it's a driver stranded with no battery and no way to prove who they are. That's a call centre, not a bug.",
+        "So: read the plate, charge first, bill later. Notice that's now a seam between identity and payment."
+      ]
+    },
+    {
+      "phase": "Stress the physical world",
+      "time": "6 min",
+      "say": [
+        "Cars hit chargers; drivers idle in bays. Cameras and telemetry for the first, time-based pricing for the second.",
+        "Some residues are business changes. That's allowed — not everything is solved in software."
+      ]
+    },
+    {
+      "phase": "Stress the market",
+      "time": "8 min",
+      "say": [
+        "A taxi firm wants one account for fifty drivers. That breaks 'customer' — the account becomes a payer with many credentials.",
+        "A hospital wants ambulances prioritized. That adds entitlement to authorization."
+      ]
+    },
+    {
+      "phase": "Show looping",
+      "time": "6 min",
+      "say": [
+        "Now two things nobody designed for. Organized blocking of bays by petrol cars: already covered by the camera, the plate reader and the sliding scale — and it's billable.",
+        "An EU law mandating card payment at every charger, a decade later: already covered, because identity and payment were pulled apart when the fob broke.",
+        "When new stressors stop needing new residues, that's criticality. That's my stopping point."
+      ]
+    },
+    {
+      "phase": "Close",
+      "time": "3 min",
+      "say": [
+        "Every seam here traces to a stressor. Nothing was added because it's a pattern I like.",
+        "If I had more time I'd build the contagion matrix — stressors against components — to find coupling that no call graph shows."
+      ]
+    }
+  ],
+  "levelVariants": [
+    {
+      "level": "Mid-level",
+      "expectations": "Names trade-offs for each decision and can defend the naïve design. Tends to answer a stressor with an incident fix — replace the fob — rather than letting it reshape a boundary."
+    },
+    {
+      "level": "Senior",
+      "expectations": "Raises stressors unprompted, and consistently states the attractor in business terms before proposing a change. Recognizes that separating identity from payment was the valuable output of the fob stressor, not the plate reader itself."
+    },
+    {
+      "level": "Staff+",
+      "expectations": "Reaches looping deliberately: shows a later stressor arriving for free, names which earlier residues paid for it, and uses that as the argument for stopping. Discusses hyperliminal coupling and where the residues should and should not be compressed together."
+    }
+  ],
+  "followUps": [
+    {
+      "question": "Isn't this just over-engineering for things that may never happen?",
+      "answer": "The book's answer is that a residue is a described change, not necessarily an implemented one — you can design the second data centre and run one. And the failure statistics point the other way: projects far more often fail on context they never considered than on components they built and didn't need."
+    },
+    {
+      "question": "How is a stressor different from a risk?",
+      "answer": "A risk carries a probability and an impact, which are usually opinions dressed as numbers, and they act as a filter that removes exactly the unlikely-sounding stressors that lead to useful attractors. A stressor needs only a coherent story."
+    },
+    {
+      "question": "How is this different from chaos engineering?",
+      "answer": "Chaos engineering tests running infrastructure against technical failure. Stressor analysis happens at design time against the business context, and most of its stressors — a regulator, a fleet buyer, a competitor's price — have no infrastructure equivalent at all."
+    },
+    {
+      "question": "When do you stop?",
+      "answer": "When looping starts: new stressors are already survived by existing residues. The book also offers a measurable version — the residual index, (Y − X) / S, comparing how many fresh stressors the residual and naïve designs survive."
+    },
+    {
+      "question": "How much of this fits in a 45-minute interview?",
+      "answer": "Three or four stressors and one looping payoff. The signal isn't volume; it's stating the attractor in business terms and showing one change arrive for free."
+    }
+  ],
+  "assets": {}
+}

@@ -322,6 +322,53 @@ h3 {
     border-left-color: var(--accent);
 }
 
+/* Stressor cards (Residuality Theory): the amber edge marks context pressure
+   on the design, distinct from the accent edge used for its decisions. */
+.concept-card.stressor-card {
+    border-left-color: #b0560b;
+}
+
+/* A "survived" stressor is the book's looping signal — the design already
+   absorbs it. Green edge, so criticality reads at a glance down the column. */
+.concept-card.stressor-card.stressor-survived {
+    border-left-color: #2a6047;
+}
+
+.stressor-badge {
+    display: inline-block;
+    margin-bottom: 6px;
+    padding: 1px 8px;
+    border: 1px solid #2a6047;
+    border-radius: 99px;
+    color: #2a6047;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.stressor-detection {
+    margin: 0 0 8px;
+    font-size: 12.5px;
+}
+
+.stressor-components {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 9px;
+}
+
+.stressor-component-chip {
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+}
+
 .concept-card h4 {
     margin: 0 0 4px;
     font-size: 15px;
@@ -1945,6 +1992,227 @@ a.probe-link-title:hover {
 .intro-grouped-list,
 .overview-concepts {
     display: block;
+}
+
+/* ---- Residuality (Wrap-up) ----------------------------------------------
+   One entry holding the whole stressor analysis: the stressor/residue cards,
+   then the contagion matrix derived from them. The rule above the matrix
+   heading separates the two halves without making them look like two entries. */
+
+/* Primer for readers meeting Residuality Theory for the first time. Sits above
+   the cards and defines the three words they use as labels. */
+.residuality-explainer {
+    margin: 0 0 22px;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-left: 3px solid #b0560b;
+    border-radius: 6px;
+    background: var(--panel);
+}
+
+.residuality-lede {
+    margin: 0 0 12px;
+    max-width: 82ch;
+    font-size: 14.5px;
+}
+
+.residuality-glossary {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 16px;
+    margin: 0 0 12px;
+    max-width: 86ch;
+}
+
+.residuality-glossary dt {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #b0560b;
+    padding-top: 2px;
+}
+
+.residuality-glossary dd {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--muted);
+}
+
+.residuality-payoff {
+    margin: 0;
+    padding-top: 11px;
+    border-top: 1px solid var(--border);
+    max-width: 86ch;
+    font-size: 13.5px;
+    color: var(--muted);
+}
+
+.residuality-payoff strong {
+    color: var(--text);
+}
+
+/* On narrow screens the term/definition grid stacks instead of squeezing. */
+@media (max-width: 620px) {
+    .residuality-glossary {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .residuality-glossary dd {
+        margin-bottom: 8px;
+    }
+}
+.residuality-section-title {
+    margin: 30px 0 14px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 17px;
+    font-weight: 600;
+}
+
+/* The stressor x component incidence matrix. Wide by nature, so the table
+   scrolls inside its own container rather than pushing the page sideways. */
+.contagion-intro {
+    margin: 0 0 16px;
+    max-width: 78ch;
+    font-size: 13.5px;
+}
+
+.contagion-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+}
+
+.contagion-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+
+.contagion-table th,
+.contagion-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 10px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.contagion-corner,
+.contagion-row-head {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 240px;
+    max-width: 380px;
+    background: var(--panel);
+    text-align: left;
+    font-weight: 500;
+}
+
+.contagion-corner,
+.contagion-col-head,
+.contagion-total-head {
+    background: var(--bg);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.contagion-col-unknown {
+    color: var(--error);
+}
+
+.contagion-cell {
+    color: var(--border);
+    font-size: 15px;
+    line-height: 1;
+}
+
+/* A hit: this stressor damages this component. */
+.contagion-hit {
+    color: #b0560b;
+}
+
+/* A row with 2+ hits is hyperliminal coupling — the reading this view exists
+   for, so it gets a tinted band rather than only a number. */
+.contagion-row-coupled td,
+.contagion-row-coupled th {
+    background: rgba(176, 86, 11, 0.07);
+}
+
+.contagion-total {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+
+.contagion-hot {
+    color: #b0560b;
+    font-weight: 600;
+}
+
+.contagion-foot th,
+.contagion-foot td {
+    border-bottom: 0;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 11.5px;
+}
+
+.contagion-survived-dot {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 6px;
+    border: 1px solid #2a6047;
+    border-radius: 99px;
+    color: #2a6047;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.contagion-readings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.contagion-reading {
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-left: 3px solid #b0560b;
+    border-radius: 6px;
+    background: var(--panel);
+}
+
+.contagion-reading h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.contagion-reading p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* Lead line on the Overview > Stressors entry: how many stressors there are and
+   how many the design already survives (the criticality signal). */
+.stressor-summary {
+    margin: 0 0 18px;
+    padding-left: 11px;
+    border-left: 2px solid var(--border);
+    font-size: 13.5px;
+    max-width: 78ch;
 }
 
 .intro-item-group {

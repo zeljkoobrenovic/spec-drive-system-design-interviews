@@ -1715,6 +1715,21 @@
           "description": "Claiming the Idempotency-Key as a row in the payments database means the claim and the charge result commit in one transaction and can never diverge, but it couples dedup throughput to the primary DB. A dedicated store like Redis claims keys fast and isolates that load, yet a crash between the external claim and the DB commit leaves two stores disagreeing about whether the charge happened.",
           "chosen": "The design claims the key in the payments DB so the claim and result are atomic, accepting the primary-DB coupling rather than a two-store recovery problem on the money path."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A regulator requires strong customer authentication, adding a bank-side challenge mid-payment",
+          "detection": "Legislative timelines (PSD2-style mandates), acquirer bulletins, a competitor shipping 3-D Secure first",
+          "attractor": "A payment stops being a single request-response and becomes a conversation the customer can abandon halfway through. Some charges now sit pending for minutes while the shopper argues with their banking app, and the merchant still expects an answer.",
+          "business": "Comply without losing conversions, and keep merchants able to reason about what a pending charge means.",
+          "residue": "The charge becomes an addressable resource with a lifecycle rather than the return value of a call: an intent is recorded before the bank is contacted, and the client polls or is notified rather than blocking.",
+          "components": [
+            "Idem",
+            "DB",
+            "GW"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -2733,6 +2748,21 @@
           "description": "A perfectly built ledger is still one party's view; the PSP's settlement file is a second source of truth that can disagree — as when the ledger says $1,000,000 and the file says $999,300. Continuous reconciliation costs an ingestion service and an operating model for working breaks, but it is the only way to detect drift from missed webhooks, bugs, or PSP-side adjustments.",
           "chosen": "The design runs a reconciliation service that compares PSP settlement files against the ledger line by line, treating breaks as a managed lifecycle rather than assuming internal correctness suffices."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "The payment provider is acquired and its settlement file format and cut-off times change",
+          "detection": "Provider migration notices; a settlement run that suddenly does not parse",
+          "attractor": "The authoritative external record moves without notice. Money is provably in the bank but does not match the ledger, and finance cannot close the month until somebody explains the gap.",
+          "business": "Switch or absorb providers without a period where the books cannot be closed.",
+          "residue": "Reconciliation treats the provider's record as one untrusted input among several rather than as truth: the ledger stays authoritative and reconciliation produces explicit discrepancies instead of silent corrections.",
+          "components": [
+            "Recon",
+            "Ledger",
+            "Bank"
+          ],
+          "group": "Suppliers"
+        }
       ]
     },
     {
@@ -3070,6 +3100,21 @@
           "name": "Projection vs. snapshot-plus-delta",
           "description": "Periodic balance snapshots plus a delta sum keep reads strongly consistent with bounded cost, but snapshotting is another background job that must handle late entries, and hot accounts still pay a growing delta between checkpoints. A maintained projection is a single steady pipeline whose output is a pure fast lookup shaped for payout rules (available vs. pending).",
           "chosen": "The design maintains a projector-fed read model rather than snapshots, since the eventual consistency it accepts is confined to display reads that do not gate money."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A marketplace seller disputes a payout months later and demands a per-transaction breakdown",
+          "detection": "Support escalations; a legal request for transaction history; an auditor's sample",
+          "attractor": "Balances stop being an operational number and become evidence. The business must explain not just what a seller is owed but how every cent of it arose, long after the fact.",
+          "business": "Answer the dispute from records rather than from reconstruction.",
+          "residue": "Already survived. The double-entry ledger (step 3) is append-only and the balance is a read model derived from it, so any historical balance is replayable and every movement already carries its originating entry.",
+          "survived": true,
+          "components": [
+            "Ledger",
+            "Balance"
+          ],
+          "group": "Disputes and audit"
         }
       ]
     },
