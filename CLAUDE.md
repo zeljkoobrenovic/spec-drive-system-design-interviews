@@ -559,10 +559,11 @@ when absent, so the `examples` datasets are unaffected):
     looping), with 9 stressors of which 4 are `survived`. It ends on the two
     payoffs from the book: ICE-ing and the 2023 EU AFIR card mandate, both
     absorbed by residues built for unrelated stressors. It sits in the
-    `the-method` category beside `interview-method` and `patterns`. Smaller
-    retrofits live in `payment-system`, `notification-system` and `flash-sale`
-    (3 stressors each, one looping payoff each), plus `url-shortener` in
-    `examples`.
+    `the-method` category beside `interview-method` and `patterns`. Focused
+    retrofits live in `payment-system`, `wallet-ledger`, and `payment-gateway`
+    (8 stressors and 4 looping payoffs each), and in `notification-system` and
+    `flash-sale` (3 stressors and one looping payoff each), plus `url-shortener`
+    in `examples`.
   - **Authoring guidance**: stressors come from the business context — customers,
     competitors, regulators, suppliers, the physical world — not from
     infrastructure. Write the `attractor` first and in business terms; if it can

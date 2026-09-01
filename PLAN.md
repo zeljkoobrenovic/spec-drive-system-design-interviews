@@ -485,7 +485,9 @@ list is too short. The matrix half is optional; without `components` the cards
 render alone.
 `data/book/residuality` is the reference dataset for these fields (the book's
 EV-charging worked example, 9 stressors, 4 of them looping); `payment-system`,
-`notification-system` and `flash-sale` carry smaller retrofits.
+`wallet-ledger`, and `payment-gateway` have focused 8-stressor retrofits with 4
+looping cases each, while `notification-system` and `flash-sale` carry smaller
+3-stressor retrofits.
 Generated visual assets are optional too: absent `assets`/`icon`, `aiVisual`,
 or `aiVisuals` fields simply render nothing. When an `aiVisual` (per step,
 option, or finalDesign) or an `aiVisuals.{requirements,capacity}` path is

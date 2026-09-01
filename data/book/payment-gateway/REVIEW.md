@@ -1,7 +1,52 @@
 # Review: Stripe-like Payment Gateway - System Design
 
 Reviewed file: `data/book/payment-gateway/interview.json`
-Review date: 2026-06-08
+Review date: 2026-09-01 (focused Residuality retrofit)
+
+## Residuality Review
+
+This pass added and reviewed only `step.stressors`; the full-system review below
+is retained from 2026-06-08 as historical context and was not re-audited
+finding by finding.
+
+The new set has eight stressors in six contextual groups, with four
+`survived` cases:
+
+- **Regulation:** an in-country license creates jurisdiction-pinned PCI cells;
+  mandatory step-up authentication turns a synchronous charge into a resumable
+  customer and issuer conversation.
+- **Adversaries:** distributed card testing requires cross-merchant,
+  privacy-preserving velocity controls; a leaked merchant secret loops through
+  the existing publishable/secret split, overlap rotation, revocation,
+  throttling, suspension, and fraud gate.
+- **Schemes and disputes:** a 180-day chargeback window adds an evidence-backed
+  dispute state machine, provisional ledger holds or debits, scheme deadlines,
+  payout gates, and outcome reversals.
+- **Market:** marketplace split settlement loops through the existing
+  multi-entry ledger, pending/available/reserve accounts, idempotent business
+  references, and scheduled payouts.
+- **Merchant operations:** a live order-platform migration loops through
+  immutable events, endpoint-specific attempts, cursor replay, stable event ids,
+  and signing-secret overlap.
+- **Suppliers:** an acquirer's planned market exit loops through the owned vault,
+  attempt-level acquirer identity, safe active/passive routing, and the canonical
+  cross-provider ledger.
+
+Every stressor states an observable detection signal, a business attractor, the
+outcome sought, and a concrete residue. None are internal component outages or
+scored risks, and every `components[]` value resolves to a canonical
+architecture node. The contagion matrix exposes a strong design reading:
+`ChargeDB` is touched by all 8 stressors and `ChargeSvc` by 7, while the external
+PSP appears in 5 and the API, ledger, and webhook service in 4 each. The charge
+store and orchestrator are therefore not merely throughput hotspots; they are
+where independent changes in regulation, fraud, scheme rules, merchant
+operations, and suppliers converge.
+
+Residuality assessment: **4.8 / 5**. The set demonstrates four adaptations and
+four genuine loops through mechanisms built for other pressures. Future cards
+should add a new contextual direction rather than restating PSP timeouts,
+database failures, queue backlog, or other technical drills already covered by
+the walkthrough.
 
 ## Executive Summary
 

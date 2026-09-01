@@ -2146,6 +2146,25 @@
           "description": "Delegating tokenization to the PSP or card network removes almost all PCI surface and gives tokens that survive card reissuance, but PSP-scoped tokens lock you to one processor and complicate multi-acquirer failover. Owning your own vault keeps the token lifecycle and routing freedom in your hands at the cost of operating a hardened, regulated component.",
           "chosen": "The design runs its own vault, accepting the operational burden of a critical hardened dependency in exchange for processor-independent tokens and control over the token lifecycle."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A new-country payment license requires PANs, vault keys, and payment records to remain in-country while global merchants still use one integration",
+          "detection": "Market-entry legal diligence, local-acquirer onboarding terms, and the regulator's requested data-flow and key-custody maps",
+          "attractor": "A token no longer names a card everywhere; it names a card inside one legal and cryptographic jurisdiction. Routing a charge, detokenization request, or recovery copy across the wrong border can become unlawful even when it is technically available.",
+          "business": "Launch in the country without exporting card data or forcing global merchants to build a separate checkout integration.",
+          "residue": "Create regional PCI cells with independent vault token namespaces and in-country HSM keys. Encode residency in opaque token metadata, have the SDK route tokenization to the correct cell, and pin charge state, detokenization, acquirer calls, and ledger records to that jurisdiction while exporting only redacted operational aggregates to the global control plane.",
+          "components": [
+            "SDK",
+            "API",
+            "Vault",
+            "ChargeSvc",
+            "ChargeDB",
+            "PSP",
+            "Ledger"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -2675,6 +2694,40 @@
           "description": "Calling risk, authorize, and capture inline in one synchronous handler is the simplest code and gives the merchant a final answer in one response, but a timeout mid-sequence leaves the charge in an unknown state with no resume point and no safe retry. Explicit sent-but-unknown states (authorize_unknown, capture_unknown) cost upfront modeling but make ambiguity a first-class, recoverable condition.",
           "chosen": "The design models the ambiguous states explicitly, trading a simple inline handler for a stored psp_request_id that lets a timed-out authorize be reconciled or safely replayed."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A regulator mandates step-up customer authentication for qualifying online charges, and the issuer challenge completes after the merchant's request has ended",
+          "detection": "Published compliance deadlines, acquirer certification suites, and a rise in soft declines that require customer action",
+          "attractor": "A charge stops being one synchronous authorize-and-capture call and becomes a customer conversation that can be abandoned, resumed on another device, or completed by an issuer callback minutes later. Merchant, browser, issuer, and gateway may each observe a different intermediate state.",
+          "business": "Comply without turning issuer challenges into duplicate authorizations or unexplained checkout abandonment.",
+          "residue": "Persist the charge before starting authentication and add requires_action, authentication_pending, authenticated, and authentication_failed transitions. Return a scoped client secret and next action to the SDK, resume the same charge and payment attempt through signed issuer callbacks or polling, and emit merchant webhooks as the durable state machine advances rather than holding the original request open.",
+          "components": [
+            "SDK",
+            "API",
+            "ChargeSvc",
+            "ChargeDB",
+            "PSP",
+            "WebhookSvc"
+          ],
+          "group": "Regulation"
+        },
+        {
+          "stressor": "Criminals distribute low-value card-testing authorizations across thousands of newly onboarded merchants so no merchant-local limit trips",
+          "detection": "A cross-merchant rise in small declines, repeated card or device fingerprints, issuer complaints, and network monitoring notices",
+          "attractor": "The gateway becomes an attack amplifier even though every individual merchant appears within its quota. Fraud correlation must cross tenant boundaries, while exposing one merchant's customer data to another would create a second abuse.",
+          "business": "Stop the testing campaign before network fines and issuer blocks arrive without shutting down legitimate small merchants.",
+          "residue": "Derive a stable keyed card fingerprint inside the PCI vault and expose only that pseudonymous signal to a global velocity layer. Combine cross-merchant card, device, BIN, and decline patterns with network-wide authorization budgets, progressive friction, and reversible merchant quarantine; persist the rule version and reason so blocked merchants can be investigated and restored.",
+          "components": [
+            "API",
+            "Vault",
+            "ChargeSvc",
+            "ChargeDB",
+            "Fraud",
+            "PSP"
+          ],
+          "group": "Adversaries"
+        }
       ]
     },
     {
@@ -2962,6 +3015,23 @@
           "name": "Push vs. pull notification",
           "description": "Letting merchants poll a status API needs no delivery infrastructure and is naturally robust to their downtime, but timely updates would require constant polling across every merchant, wasting requests and shifting the reliability burden onto each integration. Push webhooks keep latency low but make you own retries, backoff, signing, and dedup by event id.",
           "chosen": "The design pushes signed, at-least-once webhooks with the polling API as a merchant-side fallback, keeping outcome latency in the gateway's control rather than every merchant's cron job."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A major merchant replaces its order platform and requires forty-eight hours of webhook overlap and replay while live payments continue",
+          "detection": "The merchant's migration plan, a requested cutover cursor, and test traffic sent to old and new endpoints in parallel",
+          "attractor": "A webhook endpoint stops being the permanent destination for an event. During cutover, the same payment history must seed a new consumer while live outcomes continue, and duplicate fulfilment is more damaging than delayed migration.",
+          "business": "Move the merchant to the new platform with no notification blind window and no charge fulfilled twice.",
+          "residue": "Already survived. Business events are immutable and separate from endpoint-specific delivery attempts; replay creates another attempt for the same stable event id, endpoint subscriptions isolate the cutover destinations, and versioned signing secrets support an overlap window. The merchant can backfill from a cursor while deduplicating replay and live delivery by event id.",
+          "survived": true,
+          "components": [
+            "Merchant",
+            "ChargeDB",
+            "WebhookSvc",
+            "WebhookQ"
+          ],
+          "group": "Merchant operations"
         }
       ]
     },
@@ -3372,6 +3442,41 @@
           "description": "An event-sourced log gives complete history and lets new reports be built as fresh projections, but every current-balance question needs maintained read-model machinery and years of events need schema versioning. Posted double-entry rows are a more conventional model whose zero-sum invariant catches accounting bugs at write time.",
           "chosen": "The design chooses the posted double-entry ledger — its debits-equal-credits invariant is enforceable on every write and reconciles line by line against the PSP without projection machinery."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A card scheme extends the dispute window to 180 days and requires the gateway to debit the merchant provisionally, collect evidence, and reverse the debit when the merchant wins",
+          "detection": "Scheme-rule bulletins, new dispute reason codes in acquirer feeds, and a growing queue of support cases handled outside the gateway",
+          "attractor": "A successful and even paid-out charge is no longer financially final. Every payment can become a timed legal case whose evidence, provisional liability, and outcome outlive the original authorization and merchant payout.",
+          "business": "Meet scheme deadlines and cardholder rights without hiding provisional losses in spreadsheets or making a winning merchant absorb the debit permanently.",
+          "residue": "Add a dispute entity with scheme deadlines, evidence versions, and received, needs_response, submitted, won, and lost states. Place a provisional hold or reserve debit in the ledger, gate later payouts against it, submit evidence through the acquirer, append a reversal when won or a final chargeback debit when lost, and publish each transition as the same durable merchant event history.",
+          "components": [
+            "ChargeSvc",
+            "ChargeDB",
+            "PSP",
+            "Ledger",
+            "Payout",
+            "WebhookSvc",
+            "WebhookQ"
+          ],
+          "group": "Schemes and disputes"
+        },
+        {
+          "stressor": "A licensed marketplace that remains merchant of record asks one captured charge to allocate seller proceeds, platform fees, tax, and reserves across hundreds of beneficiaries",
+          "detection": "Enterprise RFPs requesting split settlement and finance teams exporting each capture into hundreds of manual payable lines",
+          "attractor": "The economic payee stops being one merchant. The gateway becomes an allocator of third-party funds, and every cent needs a beneficial owner, availability state, and payout clock even though it entered through one card capture.",
+          "business": "Offer marketplace settlement without a second balance system or commingling seller proceeds with platform revenue.",
+          "residue": "Already survived. One balanced ledger transaction can fan a capture into beneficiary-pending, platform-fee, tax, and reserve accounts; the unique business reference prevents a repeated allocation, settlement promotes only eligible amounts to available, and the payout worker sends each owner's reconciled balance. Allocation rules and beneficiary accounts add product data, not a new money primitive.",
+          "survived": true,
+          "components": [
+            "ChargeSvc",
+            "ChargeDB",
+            "Ledger",
+            "Payout",
+            "WebhookSvc"
+          ],
+          "group": "Market"
+        }
       ]
     },
     {
@@ -3568,6 +3673,25 @@
           "name": "Durability across regions vs. cost and lag",
           "description": "A multi-region active/passive standby survives a full regional outage with bounded RPO/RTO, but cross-region replication lag risks losing the most recent writes on failover unless replication is synchronous (which taxes every charge with latency), and untested standbys rot. Staying single-region is cheaper and simpler but a regional outage takes the gateway down.",
           "chosen": "The design leads with merchant sharding for throughput and treats multi-region active/passive as the later resilience layer, avoiding paying failover complexity before the write ceiling demands it."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A merchant discovers that its secret API key was embedded in a public mobile build while fraudulent charge traffic is already arriving",
+          "detection": "Secret-scanning alerts, the merchant's incident report, and charge requests from new networks using the exposed key",
+          "attractor": "Possession of the old credential no longer proves merchant intent. The gateway must stop the attacker immediately while giving the real merchant a controlled route back to live processing and preserving evidence about charges already attempted.",
+          "business": "Contain the compromise without turning key replacement into a prolonged merchant outage or losing the audit trail needed to dispute fraudulent charges.",
+          "residue": "Already survived. Publishable keys are already separated from charge-authorizing secret keys, multiple versioned keys allow overlap rotation, one exposed key can be revoked without editing history, and the merchant can be suspended while per-merchant throttles and the fraud gate contain active traffic. Idempotent charge records preserve every accepted attempt for investigation.",
+          "survived": true,
+          "components": [
+            "Merchant",
+            "SDK",
+            "API",
+            "ChargeSvc",
+            "ChargeDB",
+            "Fraud"
+          ],
+          "group": "Adversaries"
         }
       ]
     },
@@ -3909,6 +4033,24 @@
           "name": "Routing sophistication vs. reconciliation complexity",
           "description": "Rule-based multi-acquirer routing by cost, BIN, geography, and live success rate optimizes fees and authorization rates and spreads load, but multiplies settlement reports, per-acquirer quirks, and the surface where a routing bug can fail over unsafely. Active/passive keeps one settlement path and a clear safety contract but leaves the backup idle in steady state.",
           "chosen": "The design chooses active/passive failover behind a circuit breaker, taking the simpler safety contract now and leaving success-rate-optimized routing as a later refinement."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "The primary acquirer gives ninety days' notice that it will stop serving travel merchants in two countries",
+          "detection": "Contract-termination notices, merchant-category eligibility updates, and certification deadlines from the backup acquirer",
+          "attractor": "New charges must move to another processor while old authorizations, refunds, settlement reports, and ambiguous attempts remain legally tied to the first. Acquirer choice becomes part of a payment's durable identity rather than a replaceable endpoint.",
+          "business": "Migrate eligible traffic before the deadline without stranding refunds or sending an in-flight authorization to both processors.",
+          "residue": "Already survived. The gateway owns processor-independent vault tokens, records the chosen acquirer on every payment attempt, routes new work through the existing active-passive policy, and keeps old attempts pinned to their original acquirer for reconcile-before-failover, refunds, and settlement matching. The canonical ledger spans both providers, so migration does not split merchant balances.",
+          "survived": true,
+          "components": [
+            "Vault",
+            "ChargeSvc",
+            "ChargeDB",
+            "PSP",
+            "Ledger"
+          ],
+          "group": "Suppliers"
         }
       ]
     }

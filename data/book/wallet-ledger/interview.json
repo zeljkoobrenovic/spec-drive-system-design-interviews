@@ -1747,6 +1747,41 @@
           "description": "Incrementing a balance is one cheap update; recording every movement as balanced debit/credit postings under an immutable append-only journal costs more rows and forbids convenient edits — corrections must be new compensating entries. In exchange, every balance is the sum of explainable movements, the invariant debits == credits always holds system-wide, and any number can be re-derived and audited.",
           "chosen": "The design stores money as double-entry postings with a transaction header giving each movement business meaning, because for money an explainable, rebuildable history outweighs write convenience."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A stored-value license requires customer funds to be safeguarded in segregated bank accounts and proven against wallet liabilities every day",
+          "detection": "License conditions, regulator examination requests, and bank-statement breaks between safeguarded cash and customer balances",
+          "attractor": "The wallet stops being only a product balance and becomes a regulated subledger. Each unit owed to a customer must have an identifiable legal entity, currency, and matching external asset, and an unexplained shortfall can stop the business from releasing funds.",
+          "business": "Keep the license and prove on demand that customer money is neither commingled with operating cash nor missing from the safeguarding bank.",
+          "residue": "Classify ledger accounts by legal entity, owner, currency, and asset-or-liability role; book rail movements through explicit safeguarding and suspense accounts; retain immutable bank evidence; and make reconciliation verify eligible wallet liabilities against external safeguarded assets before affected withdrawals continue.",
+          "components": [
+            "LedgerSvc",
+            "LedgerDB",
+            "BalanceView",
+            "External",
+            "ExtSettle",
+            "Recon",
+            "Audit"
+          ],
+          "group": "Regulation"
+        },
+        {
+          "stressor": "An international client asks every user to hold EUR beside USD and transfer either currency without conversion",
+          "detection": "Enterprise RFPs requesting multi-currency wallets and support volume from customers maintaining separate regional balances",
+          "attractor": "A wallet balance stops being one scalar and becomes a portfolio. Transfer validity, idempotency, statements, and conservation must all be evaluated in the selected currency rather than accidentally netting unlike units together.",
+          "business": "Add stored-value currencies without forking the ledger or allowing one currency's surplus to conceal another currency's deficit.",
+          "residue": "Already survived. Journal entries already carry currency, every transaction must balance independently per currency, materialized balances are keyed by account and currency, and the canonical idempotency request includes currency. Enabling another allowed currency changes account policy, not the posting model.",
+          "survived": true,
+          "components": [
+            "API",
+            "IdemStore",
+            "LedgerSvc",
+            "LedgerDB",
+            "BalanceView"
+          ],
+          "group": "Market"
+        }
       ]
     },
     {
@@ -2100,6 +2135,24 @@
           "description": "Updating the balance asynchronously off the hot path makes postings commit faster and contend less, but a read right after a transfer can show a stale number and an overdraft check against a lagging balance is unsafe. Updating it in the same transaction couples write latency to the balance row but guarantees reads never disagree with the journal.",
           "chosen": "The design updates the balance synchronously in the posting's transaction, with a watermark so the derived row can always be recomputed and verified against the journal."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A marketplace asks the wallet to hold buyer funds until delivery, then capture, cancel, or expire the reservation",
+          "detection": "Marketplace RFPs, merchants building escrow in spreadsheets, and support cases where a completed transfer has to be manually unwound after cancelled fulfilment",
+          "attractor": "A transfer stops being an immediate change of ownership. The same posted balance can contain money that is visible to the buyer but temporarily unavailable, with release controlled by a later business event.",
+          "business": "Launch conditional payment without letting either party spend reserved funds or repairing every cancellation with an ad hoc transfer.",
+          "residue": "Already survived. The hold lifecycle already separates posted from available balance and supports create, capture, release, expiry, and reversal; capture appends the definitive ledger movement and the outbox publishes its outcome. Delivery policy can drive those existing transitions without introducing a second balance authority.",
+          "survived": true,
+          "components": [
+            "API",
+            "LedgerSvc",
+            "LedgerDB",
+            "BalanceView",
+            "Outbox"
+          ],
+          "group": "Market"
+        }
       ]
     },
     {
@@ -2388,6 +2441,23 @@
           "description": "Serializable isolation delegates correctness to the engine — no hand-written locks or versions, and it catches subtle anomalies like write skew — but it carries the highest overhead, still forces retries on serialization failures, and behaves differently across engines. Hand-rolled CAS keeps the logic explicit and portable at the cost of implementing retry-on-conflict correctly.",
           "chosen": "The design keeps concurrency control explicit in the application via versioned CAS rather than paying serializable isolation's cost and engine variability."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A court order freezes outgoing value from one wallet immediately while salary credits, mandatory refunds, and chargeback reversals must continue",
+          "detection": "Sanctions-list matches, garnishment orders, and compliance cases carrying an account id, legal basis, and effective time",
+          "attractor": "An account can no longer be simply active or frozen. Whether a movement is lawful now depends on its direction, purpose, protected amount, and time, while customer remedies must remain available through the same ledger.",
+          "business": "Enforce the order at once without rejecting legally required credits or losing evidence of every allowed and blocked attempt.",
+          "residue": "Replace the scalar status check with versioned restriction rules enforced inside the same controlled posting transaction: block new debits, withdrawals, and holds; admit identified credits and compensations; reserve protected amounts separately; and stamp the rule version and case reference onto the durable transaction and audit trail.",
+          "components": [
+            "API",
+            "LedgerSvc",
+            "LedgerDB",
+            "BalanceView",
+            "Audit"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -2490,6 +2560,26 @@
           "name": "Atomicity vs. scalability",
           "description": "Keeping every account pair in one shard preserves the single local transaction that makes a transfer trivially atomic, but caps the ledger at one shard's capacity. Sharding by account id scales writes but splits a transfer into two legs with no transaction spanning them, so atomicity must be rebuilt as a coordinator-driven saga through per-shard clearing accounts, with durable state, retries, and terminal handling.",
           "chosen": "The design shards by account and runs a saga of two locally-atomic legs through clearing accounts, accepting a transient in-flight state in exchange for never creating or losing a cent."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "An enterprise payroll customer schedules one 500,000-recipient run from a single treasury wallet for 09:00",
+          "detection": "Signed payroll contracts, progressively larger test manifests, and pre-launch projections showing one funding account feeding hundreds of ledger shards in the same minute",
+          "attractor": "A transfer becomes a business batch with one funding decision and hundreds of thousands of independently observable outcomes. Serializing every debit on the treasury balance misses payroll cut-off, while an all-or-nothing promise across shards cannot be delivered honestly.",
+          "business": "Pay every valid worker by the cut-off, report each rejection precisely, and never debit the employer for a child payment that was not durably accepted.",
+          "residue": "Pre-validate an immutable batch manifest, reserve the accepted total once on the treasury wallet, assign a batch id plus stable child idempotency keys, and let the coordinator fan child transfers through shard-local clearing accounts. Outbox progress drives customer status, and reconciliation closes or releases every reserved child rather than pretending the whole batch is one distributed transaction.",
+          "components": [
+            "API",
+            "IdemStore",
+            "BalanceView",
+            "Coordinator",
+            "ShardA",
+            "ShardB",
+            "Outbox",
+            "Recon"
+          ],
+          "group": "Enterprise customers"
         }
       ]
     },
@@ -2852,6 +2942,54 @@
           "name": "Detection cost vs. detection latency",
           "description": "Recomputing every balance from the journal and matching external provider reports catches everything but is expensive, so it can only run on a schedule; cheap continuous invariant checks (system-wide debits == credits, materialized balance == journal sum through its watermark) run constantly but only catch what those invariants cover.",
           "chosen": "The design reconciles at two cadences — continuous cheap invariant checks plus scheduled full recomputation — so drift is caught quickly without paying full-replay cost all the time."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "The primary bank replaces per-transfer callbacks with a daily net settlement file that combines thousands of top-ups, withdrawals, fees, and returns",
+          "detection": "Bank migration notices, versioned sample files, disappearing movement-level callbacks, and statement totals that no longer match submitted instructions one for one",
+          "attractor": "One external cash fact no longer corresponds to one wallet movement. The business must explain a net bank position assembled from many customer liabilities and bank fees before finance can close the day or release dependent funds.",
+          "business": "Migrate the rail without treating a net total as proof that every customer movement settled correctly.",
+          "residue": "Retain each source file immutably with provider, schema version, hash, sequence, and completeness metadata; normalize it into canonical settlement lines; post fees and unmatched cash through explicit clearing and suspense accounts; and let reconciliation close only fully explained batches while opening durable breaks for the remainder.",
+          "components": [
+            "External",
+            "ExtSettle",
+            "Recon",
+            "Audit",
+            "LedgerDB"
+          ],
+          "group": "Suppliers"
+        },
+        {
+          "stressor": "An external rail reverses a top-up ninety days after settlement and redelivers the callbacks out of order",
+          "detection": "Provider dispute notices, a settlement event whose predecessor is already closed, and repeated provider event ids during callback replay",
+          "attractor": "Funds the customer regarded as final can become a debt after they have been spent. The wallet must accept the rail's legal outcome without deleting the original top-up, applying the reversal twice, or disguising a negative balance.",
+          "business": "Record the late outcome exactly once and preserve a complete explanation of both the original credit and the resulting recovery balance.",
+          "residue": "Already survived. Provider events are deduplicated by provider event id, external movements already include a reversed state, and a reversal appends a balanced compensating transaction instead of editing the settled top-up. Reconciliation matches the new fact to the original movement and leaves any recovery balance explicit for policy to handle.",
+          "survived": true,
+          "components": [
+            "External",
+            "ExtSettle",
+            "LedgerSvc",
+            "LedgerDB",
+            "Recon"
+          ],
+          "group": "Suppliers"
+        },
+        {
+          "stressor": "A customer contests a transfer seven years later after shard moves, a regional failover, and several balance rebuilds",
+          "detection": "Ombudsman cases, litigation holds, and auditors requesting the balance and provenance at a historical cut-off",
+          "attractor": "The current balance stops being sufficient evidence. The business must reproduce what it knew, what committed, and how every derived number was rebuilt across infrastructure generations long after operational logs have expired.",
+          "business": "Answer from durable records within the dispute deadline rather than reconstructing money history from backups and spreadsheets.",
+          "residue": "Already survived. Immutable transaction headers and postings preserve the original movement, balances are rebuildable through recorded watermarks, audit exports retain long-lived evidence, and the recovery checkpoint ties journal position to derived-state replay. A shard move changes placement, not the historical account statement.",
+          "survived": true,
+          "components": [
+            "LedgerDB",
+            "BalanceView",
+            "Recon",
+            "Audit"
+          ],
+          "group": "Disputes and audit"
         }
       ]
     }

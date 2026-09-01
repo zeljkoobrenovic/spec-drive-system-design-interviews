@@ -17,6 +17,14 @@ I turned this into an interactive system-design walkthrough — the kind of step
 7️⃣ A behaviour harness: specs and tests you can actually trust
 8️⃣ Scaling it: harness templates and the human steering loop
 
+Every step is a trade-off, and the walkthrough makes them explicit. A few favorites:
+
+⚖️ Prose vs. mechanization — prose rules are cheap but probabilistic; mechanize the repeat offenders into scaffolds and linter rules.
+⚖️ Blocking vs. advisory sensors — block only on fast, deterministic, high-precision checks; a flaky blocker stalls every agent turn.
+⚖️ Loop speed vs. sensor depth — a hard seconds-level budget in the inner loop; depth moves right in the lifecycle.
+⚖️ Sensor coverage vs. determinism — LLM review agents widen what you can see, but import non-determinism into the very thing built to compensate for it.
+⚖️ Harness investment vs. delivery pressure — prioritize by escape analysis: build the control for the defect class that last cost human time.
+
 My favorite detail: sensor output should be optimized for the LLM, not for humans. A lint message that says "move this behind the port interface in domain/ports" is a positive kind of prompt injection. A 400-line stack trace is context poison.
 
 Feedforward-only harnesses drift into folklore. Feedback-only agents keep repeating themselves. You need both directions.

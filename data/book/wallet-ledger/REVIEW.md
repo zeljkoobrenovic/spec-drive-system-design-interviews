@@ -1,7 +1,48 @@
 # Review: Wallet / Ledger - System Design
 
 Reviewed file: `data/book/wallet-ledger/interview.json`
-Review date: 2026-06-08
+Review date: 2026-09-01 (focused Residuality retrofit)
+
+## Residuality Review
+
+This pass added and reviewed only `step.stressors`; the full-system review below
+is retained from 2026-06-08 as historical context and was not re-audited
+finding by finding.
+
+The new set has eight stressors in five contextual groups, with four
+`survived` cases:
+
+- **Regulation:** a stored-value safeguarding regime turns the wallet into a
+  regulated liability subledger reconciled to segregated external cash; a
+  directional court freeze requires movement-specific restrictions instead of
+  one scalar account status.
+- **Market:** adding a second stored-value currency loops through the existing
+  per-currency journal and balance model; marketplace delivery holds loop
+  through the existing reservation lifecycle and append-only capture path.
+- **Enterprise customers:** a 500,000-recipient payroll run turns one transfer
+  into a durable batch, reserving funds once and fanning stable child movements
+  through the cross-shard coordinator.
+- **Suppliers:** a bank's move from movement callbacks to daily net files
+  creates versioned ingestion, suspense accounting, and explicit settlement
+  breaks; a ninety-day rail reversal loops through provider-event dedup,
+  settlement states, compensating entries, and reconciliation.
+- **Disputes and audit:** a seven-year-old transfer dispute loops through the
+  immutable journal, rebuildable balance watermarks, recovery checkpoints, and
+  audit exports even after shard moves and failover.
+
+All stressors name an observable detection signal, a business attractor, the
+outcome the business needs, and a concrete residue. None are component outages
+or scored risks. Every `components[]` value resolves to a canonical architecture
+node. The contagion matrix should expose the design's central contextual
+coupling: `LedgerDB` is touched by 7 of 8 stressors, `BalanceView` by 6, and
+`LedgerSvc` and `Recon` by 5 each. The less-common coordinator and shard columns
+remain useful because they isolate the enterprise batch attractor rather than
+inflating every card with the final design's full node set.
+
+Residuality assessment: **4.8 / 5**. The set demonstrates both adaptation and
+looping without duplicating the technical failures already covered by
+`failureDrills`. Future additions should introduce a genuinely new business
+attractor, not another database, callback, or relay failure.
 
 ## Executive Summary
 

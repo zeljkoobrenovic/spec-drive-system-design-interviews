@@ -1715,21 +1715,6 @@
           "description": "Claiming the Idempotency-Key as a row in the payments database means the claim and the charge result commit in one transaction and can never diverge, but it couples dedup throughput to the primary DB. A dedicated store like Redis claims keys fast and isolates that load, yet a crash between the external claim and the DB commit leaves two stores disagreeing about whether the charge happened.",
           "chosen": "The design claims the key in the payments DB so the claim and result are atomic, accepting the primary-DB coupling rather than a two-store recovery problem on the money path."
         }
-      ],
-      "stressors": [
-        {
-          "stressor": "A regulator requires strong customer authentication, adding a bank-side challenge mid-payment",
-          "detection": "Legislative timelines (PSD2-style mandates), acquirer bulletins, a competitor shipping 3-D Secure first",
-          "attractor": "A payment stops being a single request-response and becomes a conversation the customer can abandon halfway through. Some charges now sit pending for minutes while the shopper argues with their banking app, and the merchant still expects an answer.",
-          "business": "Comply without losing conversions, and keep merchants able to reason about what a pending charge means.",
-          "residue": "The charge becomes an addressable resource with a lifecycle rather than the return value of a call: an intent is recorded before the bank is contacted, and the client polls or is notified rather than blocking.",
-          "components": [
-            "Idem",
-            "DB",
-            "GW"
-          ],
-          "group": "Regulation"
-        }
       ]
     },
     {
@@ -1927,6 +1912,24 @@
           "name": "Read cost vs. self-checking correctness",
           "description": "A mutable balance column is a trivially fast single-column read with a simple mental model, but a lost or double-applied update silently corrupts the balance with no history to detect, undo, or reconcile against the PSP. Append-only double-entry rows cost two immutable writes per movement and force balance reads to sum entries, but every write must balance to zero — an invariant that catches bugs by construction.",
           "chosen": "The design chooses the append-only double-entry ledger, paying storage and read complexity for books that always sum to zero and a full audit trail for finance and disputes."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "An enterprise marketplace asks one customer charge to fund hundreds of sellers, platform fees, taxes, and rolling reserves on different payout schedules",
+          "detection": "Enterprise RFPs asking for split settlement and merchants exporting each charge into hundreds of manual payable lines",
+          "attractor": "The payee stops being one merchant. The platform becomes an allocator of other people's money, and every cent needs an owner, an availability state, and a payout clock even though it entered through one capture.",
+          "business": "Win marketplace business without building a second balance system or commingling seller funds.",
+          "residue": "Already survived. One balanced ledger transaction can fan out into seller, platform-fee, tax, and reserve accounts; the balance projection rolls each account forward, and the payout service reserves only that account's available funds. The new product adds allocation rules and account records, not a new money primitive.",
+          "survived": true,
+          "components": [
+            "PaySvc",
+            "Router",
+            "Ledger",
+            "Balance",
+            "Payout"
+          ],
+          "group": "Market"
         }
       ]
     },
@@ -2302,6 +2305,24 @@
           "description": "Keeping authorize and capture in one flow is simpler, but capture involves an ambiguous external PSP call; decoupling capture behind a queue-driven worker and an explicit state machine (including a capture_unknown state for the in-doubt window) adds states to define and maintain in exchange for every ambiguous outcome having a named, recoverable place to land.",
           "chosen": "The design makes the payment an explicit state machine driven by an async capture worker, so a timed-out PSP call parks in capture_unknown instead of guessing."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A regulator mandates step-up customer authentication, and the issuer challenge can complete after the merchant's request has ended",
+          "detection": "Published compliance deadlines, acquirer test mandates, and a rise in PSP responses that require customer action",
+          "attractor": "A payment stops being one request-response and becomes a conversation the shopper can abandon and resume. The issuer, browser, PSP, and merchant may each observe a different intermediate state for minutes, while the merchant still needs one unambiguous payment identity.",
+          "business": "Comply without turning every challenge into a duplicate charge or an unexplained checkout abandonment.",
+          "residue": "Create the payment as a durable resource before contacting the issuer. Give customer action its own lifecycle state and return token, resume by payment id, reuse the same idempotency key, and let signed callbacks or polling advance the existing asynchronous state machine instead of holding the original request open.",
+          "components": [
+            "GW",
+            "PaySvc",
+            "Idem",
+            "DB",
+            "WebhookSvc",
+            "EventWorker"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -2630,6 +2651,24 @@
           "description": "Deduplicating inbound PSP webhooks by event id at ingress means downstream processing sees each event once and the webhook can be acked fast, but it adds a dedup store on the hot inbound path that must retain ids for the PSP's whole retry window. Relying only on a unique constraint at the ledger keeps correctness at the source of truth with one less component, yet every duplicate travels the full pipeline first and non-ledger side effects like notifications go unguarded.",
           "chosen": "The design dedups by event id at ingress before enqueueing, so duplicates are collapsed once and every downstream effect — not just the ledger write — happens exactly once."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A card scheme allows a dispute before delayed settlement, so the PSP reports the reversal before the event it reverses",
+          "detection": "Scheme-rule bulletins and a rise in deferred PSP events whose payment or settlement predecessor is absent",
+          "attractor": "External arrival order no longer matches the legal order of the money. A merchant can owe funds before the sale appears available, and a handler that treats the current state as complete will reject a valid financial fact as impossible.",
+          "business": "Accept the scheme's outcome exactly once without inventing revenue, losing a chargeback, or requiring finance to repair event order by hand.",
+          "residue": "Already survived. The receiver persists and deduplicates the signed raw event before applying it, the event worker defers facts whose predecessor is missing, and corrections append balanced ledger transactions instead of mutating history. A new scheme event needs a transition mapping, not a new delivery or accounting mechanism.",
+          "survived": true,
+          "components": [
+            "WebhookSvc",
+            "Queue",
+            "EventWorker",
+            "DB",
+            "Ledger"
+          ],
+          "group": "Suppliers and schemes"
+        }
       ]
     },
     {
@@ -2751,17 +2790,20 @@
       ],
       "stressors": [
         {
-          "stressor": "The payment provider is acquired and its settlement file format and cut-off times change",
-          "detection": "Provider migration notices; a settlement run that suddenly does not parse",
-          "attractor": "The authoritative external record moves without notice. Money is provably in the bank but does not match the ledger, and finance cannot close the month until somebody explains the gap.",
-          "business": "Switch or absorb providers without a period where the books cannot be closed.",
-          "residue": "Reconciliation treats the provider's record as one untrusted input among several rather than as truth: the ledger stays authoritative and reconciliation produces explicit discrepancies instead of silent corrections.",
+          "stressor": "The PSP is acquired, and the successor changes settlement schema, fee netting, file cadence, and cut-off timezone during migration",
+          "detection": "provider acquisition roadmaps, versioned sample files, missing statement sequence numbers, and unexplained cut-off drift",
+          "attractor": "The external cash record changes dialect and timing while old and new contracts coexist. Finance can see cash in the bank that it cannot tie to internal entries, so merchant payouts and month-end close must stop until the gap is explainable.",
+          "business": "Migrate providers without losing the ability to close the books or silently rewriting yesterday's accounting to fit today's file.",
+          "residue": "Keep every statement immutable with provider, version, hash, sequence, and completeness metadata. Versioned adapters normalize it into canonical settlement lines; reconciliation opens explicit breaks against the authoritative ledger, holds affected payouts, and posts approved corrections as new transactions.",
           "components": [
+            "PSP",
+            "Statement",
             "Recon",
             "Ledger",
-            "Bank"
+            "Balance",
+            "Payout"
           ],
-          "group": "Suppliers"
+          "group": "Suppliers and schemes"
         }
       ]
     },
@@ -3104,15 +3146,33 @@
       ],
       "stressors": [
         {
-          "stressor": "A marketplace seller disputes a payout months later and demands a per-transaction breakdown",
-          "detection": "Support escalations; a legal request for transaction history; an auditor's sample",
-          "attractor": "Balances stop being an operational number and become evidence. The business must explain not just what a seller is owed but how every cent of it arose, long after the fact.",
-          "business": "Answer the dispute from records rather than from reconstruction.",
-          "residue": "Already survived. The double-entry ledger (step 3) is append-only and the balance is a read model derived from it, so any historical balance is replayable and every movement already carries its originating entry.",
+          "stressor": "Competitors make instant merchant payouts table stakes while card proceeds still settle days later and can be charged back",
+          "detection": "Payout-SLA clauses in enterprise RFPs, merchant churn interviews, and volume moving to instant-settlement competitors",
+          "attractor": "The processor stops merely forwarding settled money and becomes a short-term lender. A payout can leave before external cash is final, so a later fee, return, or chargeback can turn the merchant negative and consume the platform's own liquidity.",
+          "business": "Offer instant access to funds without disguising credit risk as an eventually consistent balance or paying the same money twice.",
+          "residue": "Represent pending, available, reserved, and recovery balances as separate ledger accounts rather than flags on one number. A risk policy caps platform-prefunded credit, the payout service takes a strong reservation before the bank call, and reconciliation promotes external proceeds to available only when settlement evidence arrives.",
+          "components": [
+            "PSP",
+            "Recon",
+            "Ledger",
+            "Balance",
+            "Payout",
+            "Bank"
+          ],
+          "group": "Market"
+        },
+        {
+          "stressor": "A marketplace seller disputes a payout eighteen months later after fees, partial refunds, reserves, and chargebacks",
+          "detection": "support escalations, auditor samples, litigation holds, and regulator requests for line-by-line seller statements",
+          "attractor": "Balances stop being an operational number and become legal evidence. The business must reproduce what was pending, available, reserved, and paid at each cut-off, not merely show today's total.",
+          "business": "Answer from durable records within the audit deadline rather than reconstructing money history from logs and spreadsheets.",
+          "residue": "Already survived. The append-only ledger preserves every originating and reversing transaction, the balance view is rebuildable for any account, payout records retain their reserve and settlement references, and reconciliation breaks explain differences from external cash.",
           "survived": true,
           "components": [
             "Ledger",
-            "Balance"
+            "Balance",
+            "Payout",
+            "Recon"
           ],
           "group": "Disputes and audit"
         }
@@ -3282,6 +3342,25 @@
           "name": "Shard scale-out vs. cross-shard atomicity",
           "description": "A single vertically scaled primary keeps every balanced double-entry write trivially local and strongly consistent, but its write ceiling eventually returns as the bottleneck. Sharding by account scales writes linearly and keeps most transactions on one shard via a per-shard clearing account, at the cost of cross-shard transfers needing a two-entry saga linked by transaction_id and reconciled for completeness.",
           "chosen": "The design shards by account with per-shard clearing accounts, keeping the common case atomic on one shard and paying the saga complexity only for genuine cross-account transfers."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A new-country license requires in-country payment records, local settlement, and independently closable books for the local legal entity",
+          "detection": "Market-entry legal diligence, local-acquirer contracts, and a regulator's data-residency and wind-down review",
+          "attractor": "One global payment platform becomes a federation of regulated books. A regulator must be able to isolate one country without freezing the rest, and a cross-border movement is now an intercompany transfer rather than an internal database write.",
+          "business": "Launch in the country while letting each legal entity settle, audit, and wind down independently.",
+          "residue": "Make legal entity and residency region part of account identity and ledger routing. Pin payment state, ledger shards, and statement ingestion to that boundary; move value between entities through explicit clearing accounts linked by a global transaction id and reconciled evidence, never through a synchronous cross-region transaction.",
+          "components": [
+            "GW",
+            "PaySvc",
+            "DB",
+            "Router",
+            "Ledger",
+            "Statement",
+            "Recon"
+          ],
+          "group": "Regulation"
         }
       ]
     },
@@ -3460,6 +3539,24 @@
           "name": "Uniform strong consistency vs. a spent consistency budget",
           "description": "Strong consistency everywhere gives the simplest correctness story — no stale balance is ever shown — but forcing 50k rps of display reads through the ledger shards is expensive, adds coordination latency, and pays a consistency tax on data where staleness is harmless. Splitting regimes keeps money-moving writes strongly consistent while display reads ride cheap eventual projections, at the cost of developers having to classify every operation correctly.",
           "chosen": "The design spends strong consistency only where wrong answers move money — ledger writes and payout guards — and serves balances and status from eventually consistent projections."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A sanctions authority orders an immediate freeze on one merchant's payouts while customer refunds and chargebacks must continue",
+          "detection": "sanctions-list matches, court orders, and compliance cases tied to a merchant and legal entity",
+          "attractor": "The merchant relationship splits in two: returning customer money must continue, but releasing funds to the merchant becomes unlawful. A single account-wide on/off switch either harms consumers or violates the freeze.",
+          "business": "Enforce the order immediately, preserve customer remedies, and prove that no prohibited payout escaped after the effective time.",
+          "residue": "Already survived. Collection, refunds, merchant availability, reserves, and payout are separate ledger movements, while payout is its own state machine with a strong reservation gate. A merchant-level hold blocks new bank transfers without rewriting history or stopping compensating refunds and chargebacks.",
+          "survived": true,
+          "components": [
+            "DB",
+            "Ledger",
+            "Balance",
+            "Payout",
+            "Bank"
+          ],
+          "group": "Regulation"
         }
       ]
     }
