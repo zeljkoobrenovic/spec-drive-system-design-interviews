@@ -1,7 +1,59 @@
 # Review: Payment System - System Design
 
 Reviewed file: `data/book/payment-system/interview.json`
-Review date: 2026-06-08
+Review date: 2026-08-30 (focused Residuality re-review)
+
+## Residuality Re-review
+
+This pass reviewed and updated only `step.stressors`; the full-system review
+below is retained from 2026-06-08 as historical context and was not re-audited
+finding by finding.
+
+The original three-card set had good raw material: step-up authentication was
+a real regulatory context change, PSP acquisition attacked reconciliation
+rather than merely simulating an outage, and the historical payout dispute
+demonstrated looping through the immutable ledger. It was too small and too
+narrow, however, to make the contagion matrix useful. It covered regulation,
+one supplier change, and audit pressure, but not product-market change,
+liquidity, scheme ordering, sanctions, or legal-entity boundaries. Its sparse
+component mappings also made the contagion matrix restate individual cards
+rather than expose recurring coupling, and the authentication stressor was
+attached to idempotency even though its residue is the asynchronous payment
+lifecycle.
+
+The revised set has eight stressors in four contextual groups, with four
+`survived` cases:
+
+- **Market:** instant payout pressure introduces explicit liquidity and credit
+  boundaries; marketplace split settlement loops through the existing
+  multi-entry ledger, projections, and payout reservation.
+- **Regulation:** step-up authentication creates a resumable payment resource;
+  country licensing creates regional/legal-entity books; a targeted sanctions
+  freeze loops through the already-separated payout and refund paths.
+- **Suppliers and schemes:** PSP migration produces versioned statement
+  adapters and explicit reconciliation breaks; a reversal arriving before its
+  settlement loops through the durable webhook inbox and append-only ledger.
+- **Disputes and audit:** an eighteen-month payout dispute loops through ledger
+  provenance, rebuildable balances, payout references, and reconciliation
+  evidence.
+
+All stressors now state an observable detection signal, a business attractor,
+the business outcome sought, and a concrete residue. None use probability or
+risk scoring. Every `components[]` reference resolves to a canonical
+architecture node. Ledger impact is recorded against the logical `Ledger`
+component, while `Router` appears only where routing itself must change; this
+avoids duplicating the same signal across identical `LedgerA` and `LedgerB`
+columns. The matrix should now expose the central architectural reading: the
+ledger, balance projection, payout service, and reconciliation workflow are
+coupled by several independent changes in the business context. Concretely,
+the logical ledger is hit by 7 of 8 stressors, the balance and payout components
+by 5 each, and the payments DB and reconciliation service by 4 each.
+
+Residuality assessment: **4.8 / 5**. The set is broad enough to teach
+stressor → attractor → residue and looping without turning into a generic risk
+register. A future extension should add a stressor only if it exposes a new
+contextual direction; component outages, retry storms, and database failures
+still belong in `failureDrills`.
 
 ## Executive Summary
 

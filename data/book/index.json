@@ -475,6 +475,11 @@
           "id": "patterns",
           "name": "Pattern Catalog",
           "path": "data/patterns/interview.json"
+        },
+        {
+          "id": "residuality",
+          "name": "Residuality — Designing for Stress",
+          "path": "data/residuality/interview.json"
         }
       ]
     }

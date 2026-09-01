@@ -489,6 +489,87 @@ when absent, so the `examples` datasets are unaffected):
   pattern vocabulary now lives in `step.concepts`, pattern decisions in
   `step.tradeoffs` (the `patternCatalog` reference dataset is unaffected).
 - `step.traps` → per-step "Common traps" section. Each `{ trap, why?, instead? }`.
+- `step.stressors` → the Wrap-up **"Residuality"** entry, applying
+  **Residuality Theory** (Barry M. O'Reilly, *Residues*, 2024). Each
+  `{ stressor, detection?, attractor, business?, residue, survived?, components?,
+  group?, icon? }`. A **stressor** is a fact about the *business* context outside
+  the design's current understanding; it pushes the business into an
+  **attractor** (a new business state), and the change that survives there is the
+  **residue**.
+  - **Authored per step, rendered only in the Wrap-up entry.** `renderStepExtras`
+    deliberately does *not* render stressors on the step page: stressor analysis
+    only reads as analysis when the whole set is visible together (a
+    `survived: true` card means nothing unless you can see the residues that paid
+    for it). Authoring stays per-step so each card keeps a step chip linking back
+    to where it arises, and so `group` can default to the step's title.
+  - **Not the same as `failureDrills`.** A failure drill is a *technical* failure
+    of a known component; a stressor is a *contextual* change (regulation, a new
+    customer type, an acquisition). The `attractor` field enforces the
+    distinction — you cannot honestly write a business attractor for "the
+    database died". Keep component failures in `failureDrills`.
+  - **No probability, ever.** `validateDataset` rejects `probability`,
+    `likelihood`, `impact`, and `severity` on a stressor with an explanatory
+    error. The book is explicit that stressors need only a coherent narrative;
+    scoring them turns them back into an ordinary risk register.
+  - `survived: true` marks the book's **looping** — a stressor the design already
+    absorbs via residues built for *other* stressors, needing no new change. It
+    renders with an "Already survived" badge and the green `residue` icon, and is
+    the signal that the design is approaching criticality. Authoring at least one
+    of these is what makes the section worth reading.
+  - `components[]` lists node ids the stressor hits (it drives the contagion
+    matrix below); keep them resolvable against `highLevelArchitecture.nodes`.
+  - Shared fallback icons: `icons/stressor.png`, and `icons/residue.png` for
+    survived cards. Sample content lives in `data/examples/url-shortener`.
+  - **The Wrap-up "Residuality" entry** (slug `residuality`, rendered after
+    Design vs. Requirements) is the *only* place stressors appear. It is built by
+    `renderIntroResiduality()` from a payload of `{ stressors, matrix }`. It
+    opens with a short primer (`renderResidualityExplainer`) for readers who
+    have not met the theory — a lede, then a three-term glossary (stressor →
+    attractor → residue, in the order the cards use them as labels), then the
+    looping payoff. It is static copy, always shown when there are stressors,
+    including when the matrix half is absent. Below that come the two halves:
+    1. **Stressor/residue cards** (`renderStressorCards`), deduped across steps
+       by `collectDatasetStressors` — the same `collectStepItems` mechanics as
+       Concepts and Trade-offs, grouped by the item's `group` (a PESTLE-ish
+       family such as "Regulation") or the step's title, with clickable step
+       chips. A lead line counts the stressors and how many are already
+       survived, and **survived cards sort last within each group** so each group
+       reads "what attacks the design" before "what it already absorbs". This
+       depends on `stressor` being in `conceptKey()`'s field chain — without it
+       every stressor dedupes onto the same empty key and collapses to one card.
+    2. **The contagion matrix** (`renderContagionMatrix`), under a
+       "Contagion Analysis" subheading. The matrix half is **optional**: it needs
+       `components`, so a dataset that authors stressors without them renders the
+       cards alone, with no orphan subheading.
+  - The matrix is the book's incidence grid, built by `buildContagionMatrix()`
+    with **no authoring**: stressors as rows, components as columns, a mark where
+    one hits the other. Columns are
+    the union of *referenced* components (not every node — a matrix over the
+    whole architecture would be mostly empty and bury the signal); a component id
+    that doesn't match a node still becomes a column, flagged in red, rather than
+    being silently dropped. Below the grid it renders only the readings the data
+    supports: **hyperliminal coupling** (a row with 2+ marks — components coupled
+    through the context even where no call connects them, the reading the view
+    exists for), the **most stressed component**, and **under-stressed** columns
+    (per the book, a zero column means the stressor list is too short, not that
+    the component is invulnerable).
+  - **`data/book/residuality` is the reference dataset for the whole feature** —
+    the book's EV-charging worked example as a walkthrough (naïve architecture →
+    flows → stress identity → stress the physical world → stress the market →
+    looping), with 9 stressors of which 4 are `survived`. It ends on the two
+    payoffs from the book: ICE-ing and the 2023 EU AFIR card mandate, both
+    absorbed by residues built for unrelated stressors. It sits in the
+    `the-method` category beside `interview-method` and `patterns`. Focused
+    retrofits live in `payment-system`, `wallet-ledger`, and `payment-gateway`
+    (8 stressors and 4 looping payoffs each), and in `notification-system` and
+    `flash-sale` (3 stressors and one looping payoff each), plus `url-shortener`
+    in `examples`.
+  - **Authoring guidance**: stressors come from the business context — customers,
+    competitors, regulators, suppliers, the physical world — not from
+    infrastructure. Write the `attractor` first and in business terms; if it can
+    only be phrased as "the component is down", it belongs in `failureDrills`.
+    Aim for one `survived: true` stressor per dataset: a design that never loops
+    hasn't demonstrated criticality, which is the point of the section.
 - `technologyChoices` (dataset) → Wrap-up "Technology Choices" entry (between
   Design vs. Requirements and API Flows). Each is one architecture concern:
   `{ concern, steps?, selfHosted[], cloud:{ aws[], gcp[], azure[] }, tradeoff?,

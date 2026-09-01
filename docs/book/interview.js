@@ -101,6 +101,7 @@
         finalDesign: "final-design",
         apiFlows: "api-flows",
         satisfies: "satisfies",
+        residuality: "residuality",
         technologyChoices: "technology-choices",
         interviewScript: "interview-script",
         levelVariants: "by-level",
@@ -115,6 +116,7 @@
         INTRO_SLUGS.stepsOverview,
         INTRO_SLUGS.explainerComic,
         INTRO_SLUGS.satisfies,
+        INTRO_SLUGS.residuality,
         INTRO_SLUGS.technologyChoices,
         INTRO_SLUGS.apiFlows,
         INTRO_SLUGS.levelVariants,
@@ -160,6 +162,8 @@
         concept: "icons/concept.png",
         pattern: "icons/pattern.png",
         tradeoff: "icons/trade-off.png",
+        stressor: "icons/stressor.png",
+        residue: "icons/residue.png",
         trap: "icons/trap.png",
         before: "icons/before.png",
         after: "icons/after.png",
@@ -762,10 +766,14 @@
         return index;
     }
 
+    // Dedupe key for per-step items collected into a dataset-level entry.
+    // `stressor` is in the chain because stressor items name themselves with
+    // that field (a stressor has no `name`), and without it every stressor in a
+    // dataset would collapse onto the same empty key.
     function conceptKey(concept) {
         const raw = typeof concept === "string"
             ? concept
-            : concept && (concept.term || concept.name || concept.title || concept.definition || concept.description);
+            : concept && (concept.term || concept.name || concept.title || concept.stressor || concept.definition || concept.description);
         return String(raw || "")
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, " ")
@@ -813,6 +821,81 @@
 
     function collectDatasetTradeoffs(data) {
         return collectStepItems(data, "tradeoffs");
+    }
+
+    // Dedupe relies on conceptKey() knowing the `stressor` field — see the note
+    // there. Without it every stressor would collapse onto one empty key.
+    function collectDatasetStressors(data) {
+        return collectStepItems(data, "stressors");
+    }
+
+    // ---------- Contagion analysis (Residuality Theory) ----------
+    //
+    // The incidence matrix from the book: stressors as rows, components as
+    // columns, a mark where a stressor hits a component. Fully derived from
+    // step.stressors[].components — nothing is authored per dataset.
+    //
+    // The point is not the grid but its four reading triggers (the book lists
+    // seven; the others need a larger stressor set than an interview produces):
+    //   - a row with 2+ marks  -> HYPERLIMINAL COUPLING. Components that one
+    //     stressor damages together are coupled, invisibly, until it hits. This
+    //     is the trigger worth the whole view.
+    //   - a high column total  -> a component absorbing stress from many
+    //     directions; either it does too much, or it needs real redundancy.
+    //   - a zero column        -> NOT invulnerable, under-stressed. The book is
+    //     explicit that this means you haven't imagined enough stressors.
+    //   - a high row total     -> the stressor with the widest blast radius.
+    //
+    // Only components actually referenced by a stressor become columns: a matrix
+    // over every node in the architecture would be mostly empty and would bury
+    // the signal.
+    function buildContagionMatrix(data) {
+        const stressors = collectDatasetStressors(data);
+        const withComponents = stressors.filter(
+            (s) => Array.isArray(s.components) && s.components.length > 0
+        );
+        if (withComponents.length === 0) return null;
+
+        const nodes = data && data.highLevelArchitecture && Array.isArray(data.highLevelArchitecture.nodes)
+            ? data.highLevelArchitecture.nodes
+            : [];
+        const labelById = new Map();
+        for (const n of nodes) {
+            if (n && n.id) labelById.set(n.id, n.label || n.id);
+        }
+
+        // Column order follows first appearance, so the table reads in the order
+        // the walkthrough raises the stressors.
+        const columns = [];
+        const seen = new Set();
+        for (const s of withComponents) {
+            for (const cid of s.components) {
+                if (!seen.has(cid)) {
+                    seen.add(cid);
+                    columns.push({id: cid, label: labelById.get(cid) || cid, known: labelById.has(cid)});
+                }
+            }
+        }
+
+        const rows = withComponents.map((s) => {
+            const hits = new Set(s.components);
+            const cells = columns.map((c) => hits.has(c.id));
+            const total = cells.filter(Boolean).length;
+            return {
+                stressor: s.stressor || s.name || s.title || "",
+                survived: s.survived === true,
+                steps: Array.isArray(s.steps) ? s.steps : [],
+                cells,
+                total,
+                coupled: total > 1,
+            };
+        });
+
+        const columnTotals = columns.map((_, i) => rows.filter((r) => r.cells[i]).length);
+        const coupledRows = rows.filter((r) => r.coupled).length;
+        const maxColumn = columnTotals.length > 0 ? Math.max.apply(null, columnTotals) : 0;
+
+        return {rows, columns, columnTotals, coupledRows, maxColumn};
     }
 
     function introItemGroupName(item, fallback) {
@@ -893,6 +976,21 @@
             (Array.isArray(data.satisfies.nonFunctional) && data.satisfies.nonFunctional.length > 0)
         )) {
             entries.push({kind: "intro", id: INTRO_SLUGS.satisfies, title: "Design vs. Requirements", payload: data.satisfies});
+        }
+        // Wrap-up > Residuality: the whole stressor analysis in one entry — the
+        // stressor/residue cards plus the contagion matrix derived from their
+        // `components`. Sits beside Design vs. Requirements: the same "does this
+        // design hold up" question, asked from stress instead of requirements.
+        // The matrix half is optional (it needs `components`), so a dataset that
+        // authors stressors without components still gets the cards.
+        const stressorItems = collectDatasetStressors(data);
+        if (stressorItems.length > 0) {
+            entries.push({
+                kind: "intro",
+                id: INTRO_SLUGS.residuality,
+                title: "Residuality",
+                payload: {stressors: stressorItems, matrix: buildContagionMatrix(data)},
+            });
         }
         if (Array.isArray(data.technologyChoices) && data.technologyChoices.length > 0) {
             entries.push({kind: "intro", id: INTRO_SLUGS.technologyChoices, title: "Technology Choices", payload: data.technologyChoices});
@@ -2438,6 +2536,79 @@
         return wrap;
     }
 
+    // Stressor cards (Residuality Theory — O'Reilly 2024). A stressor is a fact
+    // about the business context outside the design's current understanding; it
+    // pushes the business into an `attractor` (a new business state), and the
+    // change that lets the design survive there is the `residue`.
+    //
+    // A stressor is NOT a risk (no probability), NOT a requirement, and NOT a
+    // technical failure drill — `failureDrills` covers component failure. The
+    // `attractor` line is what keeps the two apart: it names a business state,
+    // which is hard to write for "the database died".
+    //
+    // `survived: true` marks the book's "looping": a stressor the design already
+    // absorbs through residues built for other stressors, needing no new change.
+    // That is the signal of criticality, so it gets its own badge treatment.
+    function makeStressorCard(item, opts) {
+        opts = opts || {};
+        const inline = item && typeof item === "object" ? item : {stressor: String(item || "")};
+        const title = inline.stressor || inline.name || inline.title;
+        if (!title) return null;
+
+        const survived = inline.survived === true;
+        const card = document.createElement("article");
+        card.className = "concept-card stressor-card" + (survived ? " stressor-survived" : "");
+
+        if (survived) {
+            const badge = document.createElement("span");
+            badge.className = "stressor-badge";
+            badge.textContent = "Already survived";
+            card.appendChild(badge);
+        }
+
+        const head = document.createElement("div");
+        head.className = "asset-heading";
+        const icon = makeAssetIcon(
+            inline.icon,
+            `${title} icon`,
+            survived ? ICON_FALLBACK.residue : ICON_FALLBACK.stressor
+        );
+        if (icon) head.appendChild(icon);
+        const h = document.createElement("h4");
+        h.textContent = title;
+        head.appendChild(h);
+        card.appendChild(head);
+
+        if (inline.detection) {
+            const p = document.createElement("p");
+            p.className = "stressor-detection muted";
+            p.textContent = `Detected via ${inline.detection}`;
+            card.appendChild(p);
+        }
+
+        appendConceptLine(card, "Attractor", inline.attractor);
+        appendConceptLine(card, "Business", inline.business);
+        appendConceptLine(card, survived ? "Survived by" : "Residue", inline.residue);
+
+        const components = Array.isArray(inline.components) ? inline.components : [];
+        if (components.length > 0) {
+            const chips = document.createElement("div");
+            chips.className = "stressor-components";
+            for (const cid of components) {
+                const chip = document.createElement("span");
+                chip.className = "stressor-component-chip";
+                chip.textContent = String(cid);
+                chips.appendChild(chip);
+            }
+            card.appendChild(chips);
+        }
+
+        if (opts.showSteps && Array.isArray(inline.steps) && inline.steps.length > 0) {
+            card.appendChild(makeStepChips(inline.steps));
+        }
+        return card;
+    }
+
     function renderInterviewerSignals(signals) {
         if (!signals || typeof signals !== "object") return null;
         const strong = bulletsFrom(signals.strong || []);
@@ -2536,6 +2707,10 @@
 
         appendStepExtra(renderRecap(step.recap));
         appendStepExtra(renderFailureDrills(step.failureDrills));
+        // `step.stressors` is authored per step but deliberately NOT rendered
+        // here: stressor analysis only reads as analysis when the whole set is
+        // seen together, so it lives entirely in the Wrap-up "Residuality"
+        // entry (with step chips linking each stressor back to its step).
         appendStepExtra(renderTraps(step.traps));
 
         if (Array.isArray(step.deepDives) && step.deepDives.length > 0) {
@@ -3554,6 +3729,268 @@
         return outer;
     }
 
+    // The stressor/residue cards, deduped from step.stressors and linked back to
+    // the steps where each is raised. Grouped by the item's own `group` — often
+    // a PESTLE-ish family such as "Regulation" — else the originating step title.
+    //
+    // Survived stressors sort last within each group: the reading order then
+    // runs "here is what attacks the design" before "and here is what it already
+    // absorbs", which is the order the book's stressor analysis arrives in.
+    function renderStressorCards(items) {
+        const stressors = Array.isArray(items) ? items : [];
+        const outer = document.createElement("div");
+        outer.className = "step-concepts overview-concepts overview-stressors";
+
+        const total = stressors.length;
+        const survived = stressors.filter((s) => s && s.survived === true).length;
+        if (total > 0) {
+            const summary = document.createElement("p");
+            summary.className = "stressor-summary muted";
+            summary.textContent = survived > 0
+                ? `${total} stressor${total === 1 ? "" : "s"}, of which ${survived} ${survived === 1 ? "is" : "are"} already survived by residues built for others — the signal that the design is approaching criticality.`
+                : `${total} stressor${total === 1 ? "" : "s"} — facts about the context outside the design's current understanding.`;
+            outer.appendChild(summary);
+        }
+
+        for (const group of groupedIntroItems(stressors, "Stressors")) {
+            const section = document.createElement("section");
+            section.className = "intro-item-group";
+            const title = document.createElement("h3");
+            title.className = "intro-item-group-title";
+            title.textContent = group.name;
+            section.appendChild(title);
+
+            const grid = document.createElement("div");
+            grid.className = "concept-grid";
+            const ordered = group.items.slice().sort((a, b) => {
+                const av = a && a.survived === true ? 1 : 0;
+                const bv = b && b.survived === true ? 1 : 0;
+                return av - bv;
+            });
+            for (const item of ordered) {
+                const card = makeStressorCard(item, {showSteps: true});
+                if (card) grid.appendChild(card);
+            }
+            if (grid.children.length > 0) {
+                section.appendChild(grid);
+                outer.appendChild(section);
+            }
+        }
+        return outer;
+    }
+
+    // Wrap-up > Residuality. The whole stressor analysis in one place: the
+    // stressor/residue cards, then the contagion matrix derived from them.
+    //
+    // Deliberately NOT split across the step pages. Stressor analysis is only
+    // legible as a set — the looping payoff ("this one is already survived")
+    // means nothing unless you can see the residues that paid for it — so the
+    // cards live here with step chips pointing back, rather than scattered.
+    //
+    // `payload` is {stressors, matrix} from buildEntries; both parts are
+    // optional, so a dataset with stressors but no `components` still renders.
+    function renderIntroResiduality(payload) {
+        const outer = document.createElement("div");
+        outer.className = "residuality-block";
+
+        const stressors = payload && Array.isArray(payload.stressors) ? payload.stressors : [];
+        const matrix = payload && payload.matrix ? payload.matrix : null;
+
+        if (stressors.length > 0) {
+            outer.appendChild(renderResidualityExplainer());
+            outer.appendChild(renderStressorCards(stressors));
+        }
+        if (matrix) {
+            const h = document.createElement("h3");
+            h.className = "residuality-section-title";
+            h.textContent = "Contagion Analysis";
+            outer.appendChild(h);
+            outer.appendChild(renderContagionMatrix(matrix));
+        }
+        return outer;
+    }
+
+    // A short primer for readers who have not met Residuality Theory. It defines
+    // the three terms the cards below use as labels — stressor, attractor,
+    // residue — in that order, so the glossary maps directly onto the card
+    // layout the reader is about to see. Kept deliberately compact: this is a
+    // section lede, not a summary of the book.
+    function renderResidualityExplainer() {
+        const wrap = document.createElement("section");
+        wrap.className = "residuality-explainer";
+
+        const lede = document.createElement("p");
+        lede.className = "residuality-lede";
+        lede.textContent = "Requirements describe the system you were asked for. Stressor analysis asks what the world could do to it that nobody wrote down — and keeps whatever change survives that. It comes from Residuality Theory (Barry O'Reilly, 2024).";
+        wrap.appendChild(lede);
+
+        const terms = [
+            ["Stressor", "A fact about the business context outside the design's current understanding — a new kind of customer, a regulator, a competitor, a broken assumption. Deliberately no probability: it needs a plausible story, not a likelihood."],
+            ["Attractor", "The state the business lands in when that happens, described in business terms rather than technical ones. This is the step that keeps the exercise honest — \"the database is down\" is not an attractor."],
+            ["Residue", "What is left of the design after the stress: the change that lets it keep working in that new state. Residuality treats this, rather than the component or the pattern, as the real unit of architecture."],
+        ];
+        const list = document.createElement("dl");
+        list.className = "residuality-glossary";
+        for (const [term, def] of terms) {
+            const dt = document.createElement("dt");
+            dt.textContent = term;
+            const dd = document.createElement("dd");
+            dd.textContent = def;
+            list.appendChild(dt);
+            list.appendChild(dd);
+        }
+        wrap.appendChild(list);
+
+        const payoff = document.createElement("p");
+        payoff.className = "residuality-payoff";
+        const strong = document.createElement("strong");
+        strong.textContent = "Why it is worth the time: ";
+        payoff.appendChild(strong);
+        payoff.appendChild(document.createTextNode(
+            "far more things can go wrong than there are states the business can end up in, so a residue built for one stressor tends to cover others nobody listed. A card marked “already survived” is exactly that — a change the design absorbs for free because of a decision made for an unrelated reason. Reaching a few of those is the signal to stop analysing."
+        ));
+        wrap.appendChild(payoff);
+
+        return wrap;
+    }
+
+    // The contagion matrix: the grid plus the readings that make it worth
+    // looking at. Derived from stressor components, never authored.
+    function renderContagionMatrix(matrix) {
+        const outer = document.createElement("div");
+        outer.className = "contagion-block";
+        if (!matrix) return outer;
+
+        const intro = document.createElement("p");
+        intro.className = "contagion-intro muted";
+        intro.textContent = "The same stressors, plotted against the components each one damages. Read it by row: two or more marks means those components are coupled through the context — they will fail and change together even when nothing in the design connects them, and you will not see it until that stressor arrives.";
+        outer.appendChild(intro);
+
+        const scroll = document.createElement("div");
+        scroll.className = "contagion-scroll";
+
+        const table = document.createElement("table");
+        table.className = "contagion-table";
+
+        const thead = document.createElement("thead");
+        const htr = document.createElement("tr");
+        const corner = document.createElement("th");
+        corner.className = "contagion-corner";
+        corner.textContent = "Stressor";
+        htr.appendChild(corner);
+        for (const col of matrix.columns) {
+            const th = document.createElement("th");
+            th.className = "contagion-col-head" + (col.known ? "" : " contagion-col-unknown");
+            th.textContent = col.label;
+            if (!col.known) th.title = `"${col.id}" does not match a node in highLevelArchitecture`;
+            htr.appendChild(th);
+        }
+        const totalHead = document.createElement("th");
+        totalHead.className = "contagion-total-head";
+        totalHead.textContent = "Hits";
+        htr.appendChild(totalHead);
+        thead.appendChild(htr);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        for (const row of matrix.rows) {
+            const tr = document.createElement("tr");
+            if (row.coupled) tr.className = "contagion-row-coupled";
+
+            const th = document.createElement("th");
+            th.className = "contagion-row-head";
+            th.textContent = row.stressor;
+            if (row.survived) {
+                const b = document.createElement("span");
+                b.className = "contagion-survived-dot";
+                b.textContent = "survived";
+                th.appendChild(b);
+            }
+            tr.appendChild(th);
+
+            row.cells.forEach((hit) => {
+                const td = document.createElement("td");
+                td.className = "contagion-cell" + (hit ? " contagion-hit" : "");
+                td.textContent = hit ? "●" : "·";
+                tr.appendChild(td);
+            });
+
+            const tot = document.createElement("td");
+            tot.className = "contagion-total";
+            tot.textContent = String(row.total);
+            tr.appendChild(tot);
+            tbody.appendChild(tr);
+        }
+
+        // Column totals: which components take stress from the most directions.
+        const ftr = document.createElement("tr");
+        ftr.className = "contagion-foot";
+        const fh = document.createElement("th");
+        fh.className = "contagion-row-head";
+        fh.textContent = "Stressors hitting";
+        ftr.appendChild(fh);
+        matrix.columnTotals.forEach((n) => {
+            const td = document.createElement("td");
+            td.className = "contagion-total" + (n > 0 && n === matrix.maxColumn && matrix.maxColumn > 1 ? " contagion-hot" : "");
+            td.textContent = String(n);
+            ftr.appendChild(td);
+        });
+        const corner2 = document.createElement("td");
+        corner2.className = "contagion-total";
+        corner2.textContent = "";
+        ftr.appendChild(corner2);
+        const tfoot = document.createElement("tfoot");
+        tfoot.appendChild(ftr);
+        table.appendChild(tbody);
+        table.appendChild(tfoot);
+        scroll.appendChild(table);
+        outer.appendChild(scroll);
+
+        // Readings — only those the data actually supports.
+        const readings = [];
+        if (matrix.coupledRows > 0) {
+            const names = matrix.rows.filter((r) => r.coupled).map((r) => r.stressor);
+            readings.push({
+                label: "Hyperliminal coupling",
+                text: `${matrix.coupledRows} stressor${matrix.coupledRows === 1 ? "" : "s"} damage more than one component at once (${names.join("; ")}). Those components are coupled even where no call connects them — a change to one is likely to force a change to the other.`,
+            });
+        }
+        if (matrix.maxColumn > 1) {
+            const hottest = matrix.columns
+                .filter((_, i) => matrix.columnTotals[i] === matrix.maxColumn)
+                .map((c) => c.label);
+            readings.push({
+                label: "Most stressed component",
+                text: `${hottest.join(", ")} absorb${hottest.length === 1 ? "s" : ""} stress from ${matrix.maxColumn} different directions. Either the component is doing too much and wants splitting, or it is genuinely central and deserves real redundancy.`,
+            });
+        }
+        const untouched = matrix.columns.filter((_, i) => matrix.columnTotals[i] === 0).map((c) => c.label);
+        if (untouched.length > 0) {
+            readings.push({
+                label: "Under-stressed",
+                text: `${untouched.join(", ")} take no stress in this analysis. The book's reading is that this means the stressor list is too short, not that the component is invulnerable.`,
+            });
+        }
+
+        if (readings.length > 0) {
+            const list = document.createElement("div");
+            list.className = "contagion-readings";
+            for (const r of readings) {
+                const item = document.createElement("div");
+                item.className = "contagion-reading";
+                const h = document.createElement("h4");
+                h.textContent = r.label;
+                const p = document.createElement("p");
+                p.textContent = r.text;
+                item.appendChild(h);
+                item.appendChild(p);
+                list.appendChild(item);
+            }
+            outer.appendChild(list);
+        }
+        return outer;
+    }
+
     // Overview > Concepts. Deduped from step.concepts and linked to the steps
     // where each concept appears.
     function renderIntroConcepts(items) {
@@ -3946,6 +4383,9 @@
                 break;
             case INTRO_SLUGS.tradeoffs:
                 node = renderIntroTradeoffs(entry.payload);
+                break;
+            case INTRO_SLUGS.residuality:
+                node = renderIntroResiduality(entry.payload);
                 break;
             case INTRO_SLUGS.concepts:
                 node = renderIntroConcepts(entry.payload);
@@ -4463,11 +4903,29 @@
             if (step.patterns !== undefined) {
                 throw new Error(`Step ${i} ("${step.title || step.id || ""}"): "patterns" is no longer supported — use "concepts" / "tradeoffs"`);
             }
-            for (const key of ["tradeoffs", "traps"]) {
+            for (const key of ["tradeoffs", "traps", "stressors"]) {
                 if (step[key] !== undefined && !Array.isArray(step[key])) {
                     throw new Error(`Step ${i} ("${step.title || step.id || ""}"): "${key}" must be an array if present`);
                 }
             }
+            // Residuality forbids probability: a stressor needs only a coherent
+            // narrative, never a likelihood. Rejecting these keys keeps stressors
+            // from decaying into ordinary risk-register rows.
+            (step.stressors || []).forEach((s, j) => {
+                if (!s || typeof s !== "object") return;
+                for (const banned of ["probability", "likelihood", "impact", "severity"]) {
+                    if (s[banned] !== undefined) {
+                        throw new Error(
+                            `Step ${i} ("${step.title || step.id || ""}") stressor ${j}: "${banned}" is not allowed — ` +
+                            `residuality uses no probability or scoring. Describe the "attractor" (the business state ` +
+                            `the stressor pushes the system into) and the "residue" (the change that survives it) instead.`
+                        );
+                    }
+                }
+                if (!s.stressor && !s.name && !s.title) {
+                    throw new Error(`Step ${i} ("${step.title || step.id || ""}") stressor ${j}: needs a "stressor" describing the fact outside the design's current understanding`);
+                }
+            });
         });
     }
 

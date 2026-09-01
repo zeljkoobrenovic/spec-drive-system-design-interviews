@@ -2788,6 +2788,21 @@
           "description": "Resolving preferences at accept time saves queue and worker capacity because opted-out sends never enter the pipeline, but quiet hours computed at accept can be wrong by deliver time, broadcasts would need per-recipient resolution before fanout, and a user who opts out after enqueue is still messaged. Checking at delivery time is more expensive but decides on current state.",
           "chosen": "The design applies preferences just before delivery so the decision reflects the user's state at send time, not at enqueue time."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A privacy regulator gives users a right to be forgotten, including from notification history",
+          "detection": "Regulatory guidance; a data-subject erasure request arriving through legal",
+          "attractor": "Stored recipient data becomes a liability rather than an asset. Every queue, log and dedupe record holding an address is now something the company may be obliged to erase within a deadline.",
+          "business": "Honour erasure without losing the ability to prove what was sent and why.",
+          "residue": "Messages reference a recipient id rather than embedding an address, and address resolution moves to send time in the preference service — so erasure is one deletion rather than a sweep through every queue and log.",
+          "components": [
+            "PrefSvc",
+            "Prefs",
+            "Queue"
+          ],
+          "group": "Regulation"
+        }
       ]
     },
     {
@@ -3210,6 +3225,21 @@
           "description": "Routing each channel to a primary vendor with a secondary fallback turns a vendor outage into graceful degradation instead of a dead channel, but vendors differ in semantics, failover must not double-send the same notification across vendors, and every extra vendor is more credentials and health checks to operate. The status-callback path is what closes the loop on whether a message truly arrived.",
           "chosen": "The design supports per-channel multi-vendor failover behind the router and ingests provider receipts asynchronously, accepting the extra vendor surface for delivery resilience."
         }
+      ],
+      "stressors": [
+        {
+          "stressor": "A push provider suffers a multi-hour regional outage during a product launch",
+          "detection": "Provider status pages; a collapse in delivery receipts for one channel in one region",
+          "attractor": "One channel becomes unavailable while the business's need to reach people is at its peak. Users do not experience this as 'push is down', they experience it as the product being silent.",
+          "business": "Reach people through whatever channel still works, and do not lose the messages queued for the broken one.",
+          "residue": "Routing treats channel choice as a runtime decision with per-provider health, and undeliverable messages park rather than fail — the same seam later carries provider cost-based routing.",
+          "components": [
+            "Router",
+            "Provider",
+            "DLQ"
+          ],
+          "group": "Suppliers"
+        }
       ]
     },
     {
@@ -3388,6 +3418,22 @@
           "name": "Per-user precision vs. counter infrastructure",
           "description": "Per-user token buckets at multiple scopes (user, tenant, category) stop a buggy producer from hitting one person 500 times a minute and respect provider quotas, but distributed counters need a fast shared store like Redis on the send path. A single global rate cap is trivial, but it cannot protect an individual user and ends up either too loose globally or too strict for everyone.",
           "chosen": "The design uses per-user token buckets layered with provider throttles, paying for a shared counter store because per-recipient protection is the actual requirement."
+        }
+      ],
+      "stressors": [
+        {
+          "stressor": "A bug in an upstream service emits the same event two million times in ten minutes",
+          "detection": "Queue depth alarms; a single template dominating send volume",
+          "attractor": "The platform becomes the delivery mechanism for someone else's failure. Reputation damage with providers and users happens in minutes and is not recoverable by fixing the upstream bug afterwards.",
+          "business": "Fail closed rather than amplify, and keep provider reputation intact.",
+          "residue": "Already survived. Idempotency and deduplication (step 3) collapse the repeats to a single logical notification, and per-user rate limiting (step 7) caps whatever survives that — no new mechanism is needed.",
+          "survived": true,
+          "components": [
+            "Idem",
+            "Limiter",
+            "Queue"
+          ],
+          "group": "Upstream failure"
         }
       ]
     },

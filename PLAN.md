@@ -217,7 +217,9 @@ All fields below are optional except `highLevelArchitecture` and either
   // NOTE: the old dataset-level "patterns" entry was removed. Pattern content
   // now lives in step "concepts" (vocabulary) and step "tradeoffs" (decisions);
   // the Overview "Trade-offs" entry is derived from step.tradeoffs the same way
-  // "Concepts" is derived from step.concepts.
+  // "Concepts" is derived from step.concepts. The Wrap-up "Residuality" entry is
+  // derived from step.stressors the same way (survived items sort last), and is
+  // the only place stressors render.
 
   // Standalone pattern reference. Renders as a "Pattern Catalog" entry, grouped
   // by `category`. A dataset with patternCatalog[] and NO steps[] is valid — it
@@ -298,6 +300,26 @@ All fields below are optional except `highLevelArchitecture` and either
           "chosen": "Cache-aside with short TTLs — hot reads stay fast and staleness is bounded.",
           "group": "Caching and read path",         // optional; overview grouping override
           "icon": "assets/icons/tradeoffs/cache.png" } // optional; falls back to the shared decision icon
+      ],
+      "stressors": [                                // optional; Residuality Theory (O'Reilly 2024).
+        // What could invalidate this step's decision. A stressor is a fact about
+        // the BUSINESS context outside the design's current understanding — not a
+        // risk (no probability), not a requirement, and not a technical failure
+        // (that is `failureDrills`). It pushes the business into an `attractor`
+        // (a new business state); the change that survives there is the `residue`.
+        // Authored per step, but rendered ONLY in the Wrap-up "Residuality"
+        // entry (cards + contagion matrix) — not on the step page itself.
+        { "stressor":  "A marketing agency wants links to outlive the paid account",
+          "detection": "Sales conversations, an enterprise questionnaire",  // optional; how you'd notice
+          "attractor": "Links stop being disposable records and become obligations to a customer's audience.",
+          "business":  "Offer a retention guarantee tied to the plan.",     // optional; the business reaction
+          "residue":   "Link lifetime separates from account lifetime.",
+          "survived":  false,                       // optional; true = "looping" — already survived, no change needed
+          "components": ["DB", "App"],              // optional; node ids this stressor hits
+          "group":     "Customers and contracts",   // optional; overview grouping override
+          "icon":      "assets/icons/stressors/contract.png" } // optional; falls back to the shared stressor icon
+        // Rejected by the validator: "probability", "likelihood", "impact",
+        // "severity" — residuality uses narrative, never scoring.
       ],
       "probeLinks": ["youtube-dnn"],                // optional; IDs from toProbeFurther.links[], rendered at step end
       "traps": [                                    // optional; common mistakes at this step
@@ -431,6 +453,7 @@ All fields below are optional except `highLevelArchitecture` and either
 ```
 
 The fields above (`patternCatalog`, `step.concepts`, `step.tradeoffs`, `step.traps`,
+`step.stressors`,
 `step.probeLinks`, `interviewScript`, `levelVariants`, `toProbeFurther`) are the **book differentiators** — all
 optional, so example datasets render unchanged. Deduped `step.concepts` and
 `step.tradeoffs` are grouped by their optional `group` (defaulting to the
@@ -440,6 +463,31 @@ still render the local concept and trade-off cards flat. Dataset-level
 fold that content into `step.concepts` / `step.tradeoffs`.
 `step.traps` are exercised in the canonical `url-shortener` example;
 `data/book/payment-system` uses all of them.
+`step.stressors` applies **Residuality Theory** (Barry M. O'Reilly, *Residues:
+Time, Change, and Uncertainty in Software Architecture*, 2024) as a lens beside
+trade-offs: a trade-off is the decision a step makes, a stressor is the
+context change that attacks it. The `attractor` field is what keeps stressors
+distinct from `failureDrills` — it names a *business* state, which cannot
+honestly be written for a component-level failure. A stressor marked
+`survived: true` is the book's **looping** signal (the design already absorbs it
+through residues built for other stressors) and renders with an "Already
+survived" badge. Sample stressors, including one looping case, are authored in
+the canonical `url-shortener` example. Stressors are authored per step but
+rendered **only** in the Wrap-up **"Residuality"** entry (after Design vs.
+Requirements) — the analysis only reads as analysis when the whole set is seen
+at once. That entry has two halves: the deduped stressor/residue cards (grouped
+by the item's `group` or the step's title, with step chips and a lead line
+counting how many the design already survives), and, when stressors name
+`components`, the book's stressor × component **contagion matrix**, derived with
+no authoring — a row with two or more marks is hyperliminal coupling, a high
+column total is an over-stressed component, and a zero column means the stressor
+list is too short. The matrix half is optional; without `components` the cards
+render alone.
+`data/book/residuality` is the reference dataset for these fields (the book's
+EV-charging worked example, 9 stressors, 4 of them looping); `payment-system`,
+`wallet-ledger`, and `payment-gateway` have focused 8-stressor retrofits with 4
+looping cases each, while `notification-system` and `flash-sale` carry smaller
+3-stressor retrofits.
 Generated visual assets are optional too: absent `assets`/`icon`, `aiVisual`,
 or `aiVisuals` fields simply render nothing. When an `aiVisual` (per step,
 option, or finalDesign) or an `aiVisuals.{requirements,capacity}` path is
